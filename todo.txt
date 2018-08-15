@@ -1,0 +1,15 @@
+To do far (butuh VM):
+X 1. Dissasembled C Code Structure (LiveOverflow)
+X 2. Assembly (Vivek Ramachdaran)
+X 3. Buffer Overflow (Vivek Ramachdaran, LiveOverflow)
+4. Vi
+5. Books
+6. Natas
+7. exploit exercises
+
+To do near:
+8. chmod
+9. suid vuln.
+
+Done
+X Bash
