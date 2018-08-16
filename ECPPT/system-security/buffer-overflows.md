@@ -1,7 +1,9 @@
-# ECPPT
+# [ECPPT](https://members.elearnsecurity.com/courses/penetration_testing_professional_v5)
 __________________________
 # System Security
 # Module 3 - Buffer Overflows
+
+https://members.elearnsecurity.com/course/resources/1852
 
 **Note: for further info, independent notes about the assembly language and buffer overflows, and Vivek Ramachandran's videos can be referenced**
 
@@ -114,7 +116,7 @@ If we want to find buffer overflows manually, it can be very time consuming. How
 
 Other techniques are the followings:
 - When a crash occurs, be prepared to hunt for the vulnerability with a debugger. Some companies use cloud-fuzzing to brute-force crashing (using file-based inputs). Whenever a crash is found, it is recorded for further analysis
-- A dynamic analysis tool like a fuzzer or tracer, which tracks all executions ant the data flow, help in finding problems
+- A dynamic analysis tool like a **fuzzer** or tracer, which tracks all executions ant the data flow, help in finding problems
 
 **Fuzzing** is a software testing technique that provides invalid data, i.e., unexpected or random data as input to a program. Input can be in any form such as:
 - Command line
@@ -150,16 +152,90 @@ Let's see how to identify a buffer overflow after the crash of the application.
 
 
 #### 2.3 Overflow the Buffer
+Another tool that will help you identify buffer overflows is IDA Pro. You can download a free non-commercial [edition](http://www.hex-rays.com/).
 
 _______________________
 ## 3. Exploiting Buffer Overflows
 
 
+#### 3.1 Finding the Right Offset
+In the previous example, it was easy to find to right offset where to overwrite the **EIP** address. In real exploitation process, the amount of characters needed in order to crash an application may vary in size.
+
+We can check by using various searching methods (e.g. binary search), or we can use some tools.
+
+Tools that may be in use:
+- [pattern_create](https://github.com/lattera/metasploit/blob/master/tools/pattern_create.rb) and [pattern_offset](https://github.com/lattera/metasploit/blob/master/tools/pattern_offset.rb) (Ruby)
+
+  The purpose of these scripts are really simple.
+
+  **pattern_create** receives a number and outputs a pattern that is as long as the input.
+
+  If we feed this output to our vulnerable target application, there will be an error message that tells us where the error takes place (which is usually the value of **EIP** register being overwritten)
+
+  **pattern_offset** receives a memory address and outputs how much offset is necessary to overwrite that address.
+
+- [Mona](https://github.com/corelan/mona) ([Tutorial](https://www.corelan.be/index.php/articles/)) (Python)
+**Mona** is an (Immunity Debugger) plugin that functions the same as **pattern_create** and **pattern_offset**.
+
+#### 3.2 Overwriting the EIP
+Now that know the correct size of our payload, we have to overwrite the **EIP** with a value. Remember that the value we overwrite will be used by the **RET** instruction to return.
+
+**We want to return to our shellcode so that it gets executed.**
+
+At this point, our shellcode is stored at the memory address pointed by **ESP**, therefore, returning to our shellcode means jumping to that address. The problem is that the address in the stack changes dynamically, so we cannot use it to build the exploit.
+
+What we can do is find a **JMP ESP** (or **CALL ESP**) instruction that is in a fixed location of memory.
+
+This way when the program returns, instead of *ABCD*, it will execute a **JMP ESP** (or **CALL ESP**), and it will automatically jump to the area where out shellcode is stored.
+
+In environment where **ASLR** is not enabled, we know that **kernel32.dll** functions are located at fixed addresses in memory; this allows us to perform a **JMP ESP** or a **CALL ESP** to the process address space, a line in *kernel32.dll*.
+
+(**kernel32.dll** is the 32-bit dynamic link library found in the Windows operating system kernel. It handles memory management, input/output operations, and interrupts. When Windows boots up, *kernel32.dll* is loaded into a protected memory space so other applications do not take that space over. Other *.dll* s may also help, not only this one).
+
+We can safely jump to this line and back from the kernel32 to the address in **ESP** (that holds the first line of our shell code).
+
+There are different tools and techniques that we can use to detect the address of a **CALL/JMP ESP**. One of them simply disassemble the *.dll* and then search for the instruction.
+
+To disassemble a *.dll* you can load it into Immunity Debugger (or IDA) an then search for one of two commands: **CALL ESP** or **JMP ESP**.
+
+Another tool that we can use to find **CALL ESP** and **JMP ESP** instructions is **findjmp2**, which receives the target *.dll* and the registry name we want to search
+
+You can also use Mona to do this.
+
+Example:<br>
+You can see the *goodpwd.exe*.<br>
+The variable command is conmpsed as follows: Junk bytes + **EIP** + shellcode<br>
+Also, notice that at the beginning of t he shellcode we added some **NOP** s (\x90). Therefore, once the **JMP ESP** is executed, the first instruction that will be executed is a **NOP**. The program will then continue to slide down the NOPs and execute the actual shellcode.
+
+Program flow:
+
+| |            . . .             | |
+|-|------------------------------| |
+|(2)|             junk             |<-(1) We start injecting here|
+|I|             junk             | |
+|I|            . . .             | |
+|I|             junk             | |
+|I|             junk             | |
+|I|       junk (EBP was here)    | |
+|I-->|        \x3B\x7D\x26\x77      |(3)-> (kernelbase.dll) 0x77267D3B; **JMP ESP**|
+|**ESP**->| shellcode (\x90\x90\x90\x90) |<--I(4) **EIP** will go here, because (3)|
+| | shellcode (\x90\x90\x90\x90) | |
+| |         shellcode (...)      | | |
+
+
+**Note:**
+Use Windows XP to simulate buffer overflow without **DEP** and **ASLR** protection.
 _______________________
 ## 4. Exploring a Real-World Buffer Overflow
 
 
 ## 5. Security Implementations
+#### 5.1 Helpful Tools
 
+#### 5.2 Address Space Layout
+
+#### 5.3 Data Execution Prevention
+
+#### 5.4 Stack Canary and SafeSEH
 
 _______________________
