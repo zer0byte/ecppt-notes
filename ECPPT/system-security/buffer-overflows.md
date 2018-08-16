@@ -231,11 +231,107 @@ _______________________
 
 ## 5. Security Implementations
 #### 5.1 Helpful Tools
+[EMET](https://support.microsoft.com/en-us/kb/2458544) (Enhanced Mitigation Experience Toolkit) ([Manual](https://www.microsoft.com/en-us/download/details.aspx?id=50802))
+is a utility that help prevent vulnerabilities in software from being successfully exploited. EMET offers many different mitigation technologies, such as DEP, ASLR, SEHOP, and more.
 
-#### 5.2 Address Space Layout
+EMET can be used to enhance the security of our system and it can also be used to disable them. This is especially useful when testing our exploits since we can force programs and applications not to use them.
+
+It is important to note that on newer operation systems, ASLE, DEP, and SEHOP cannot be completely disabled..
+
+#### 5.2 ASLR (Address Space Layout Randomization)
+The goal of ASLR is to introduce randomness for executables, libraries, and stack in process address space, making it more difficult for an attacker to predict memory addresses.
+
+When ASLR is activated, the OS loads the same executable at different locations in memory every time (at every boot).
+
+You can check it yourself by opening a *.dll* or a *.exe* file in Immunity Debugger and then click on the *executable modules panel*.
+
+With ASLR enabled, some of the modules will not be loaded into predictable memory locations anymore.
+
+Therefore, exploits that work by targeting known memory location (like our CALL/JMP ESP exploit) will not be successful anymore. The address of the operation will change on every reboot on every machine.
+
+ASLR is not enabled for all modules. This means that if a process has ASLR enabled, there could be a *dll* (or another module) in the address space that does not use it, making the process vulnerable to ASLR bypass attack.
+
+The easiest way to verify which processes have ASLR enabled is to download and run [Process Explorer](http://technet.microsoft.com/en-us/sysinternals/bb896653). In the ASLR column, you can see if the process implements or not ASLR.
+
+Immunity Debugger also allows you to check the ASLR status by using Mona to verify modules properties.
+
+#### 5.2.1 [Bypassing Technique](https://www.corelan.be/)
+([Other Reference](https://www.fireeye.com/blog/threat-research/2013/10/aslr-bypass-apocalypse-in-lately-zero-day-exploits.html))
+
+There are different methods that we can use, but most of them requires very good experience in reverse engineering, exploit writing, and much more, so we will only discuss some of them.
+
+1. **Non-Randomized Module**
+
+  One of the technique aims to find a module that does not have ASLR enabled and then use a simple **JMP/CALL ESP** from that module.
+
+2. **Brute Force**
+
+  With this method, ASLR can be forced by overwriting the return pointer with plausible addresses until, at some point, we reach the shellcode.
+
+  The success of pure brute-force depends on how tolerant an exploit is to variations in the address space layout (e.g., how many NOPs can be placed in the buffer), and on how many exploitation attempts one can perform.
+
+  This method is typically applied against those services configured to be automatically restarted after a crash.
+
+3. **NOP-Sled**
+
+  We create a big area of NOPs in our shellcode in order to increase the chances to jump to this area.
+
+  The advantage of this technique is that the attacker can guess the jump location with a low degree of accuracy and still successfully exploit the program.
+
+4. **Other methods**
+  - [Universal-depalsr-bypass-with-msvcr71-dll-and-mona-py](https://www.corelan.be/index.php/2011/07/03/universal-depaslr-bypass-with-msvcr71-dll-and-mona-py/)
+  - [https://www.exploit-db.com/docs/english/17914-bypassing-aslrdep.pdf](https://www.exploit-db.com/docs/english/17914-bypassing-aslrdep.pdf)
+  - [Exploit-writing-tutorial-part-6-bypassing-stack-cookies-safeseh-hw-dep-and-aslr](https://www.corelan.be/index.php/2009/09/21/exploit-writing-tutorial-part-6-bypassing-stack-cookies-safeseh-hw-dep-and-aslr/)
+
+
+#### 5.2.2 Protective Measures
+We achieve maximum defense when ASLR is correctly implemented and DEP is enabled. For deeper, more technical information on this, please check [here](http://blogs.technet.com/b/srd/archive/2010/12/08/on-the-effectiveness-of-dep-and-aslr.aspx).
+
 
 #### 5.3 Data Execution Prevention
+Another defensive feature designed for OSes is called Data Execution Prevention (DEP). It is a hardware and software defensive measure for preventing the execution of code from pages of memory that are not explicitly marked as executable.
+
+DEP helps prevent certain exploits where the attacker injects new code on the stack.
+
+#### 5.3.1 Bypassing Technique
+Bypassing DEP is possible by using a technique called [Return Oriented Programming (ROP)](https://cseweb.ucsd.edu/~hovav/talks/blackhat08.html). ROP consists of finding multiple machine instructions in the program (called gadget), in order to create a chain of instructions that do something.
+
+Since the instructions are part of the stack, DEP does not apply on them.
+
+Gadgets are small groups of instructions that perform some operations (arithmetical operations on registers, check for conditional jumps, store or load data and so on) and that end with RET instruction.
+
+The RET is important since it will allow the chain to work and keep jumping to the next address after executing the small set of instructions.
+
+The purposes of the entire chain are different. We can use ROP gadgets to call a memory protection function (kernel API such as *VirtualProtect*) that can be used to mark the stack as executable; this will allow us to run our shellcode as we have seen in the previous examples.
+
+But we can also use ROP gadgets to execute direct commands or copy data into executable regions and then jump to it.
+
+Mona offers a great feature that generates thee ROP gadget chain for us.
+
+[Here](https://www.corelan.be/index.php/security/rop-gadgets/) you can find list of ROP gadgets from different libraries and .dll files, while [here](https://www.corelan.be/index.php/2010/06/16/exploit-writing-tutorial-part-10-chaining-dep-with-rop-the-rubikstm-cube/#buildingblocks) you can find a good article that goes deeper in ROP gadgets.
+
+#### 5.3.2 Protective Measures
+In order to avoid exploit of such techniques, ASLR was introduced. By making kernel API's load at random addresses, bypassing DEP becomes hard.
+
+If both DEP and ASLR are enabled, code execution is sometimes impossible to achieve in one attempt.
 
 #### 5.4 Stack Canary and SafeSEH
+Another security implementation that has been developed during the years is the Stack Canary (a.k.a. Stack cookie).
+
+The term canary comes from the [canary in a coal mine](https://en.wiktionary.org/wiki/canary_in_a_coal_mine), and its purpose is to modify almost all t he function's prologue and epilogue instructions in order to place a small random integer value (canary) right before the return instruction, and detect if a buffer overflow occurs.
+
+As you may have known, most buffer overflows overwrite memory address location in the stack right before the return pointer this means that the canary value will be overwritten too.
+
+When the function returns, the value is checked to make sure that it was not changed. If so, it means that a stack buffer overflow occurred.
+
+#### 5.4.1 Bypassing Technique
+In order to bypass this security implementation, one can try to retrieve or guess the canary value, and add it to the payload.
+
+Beside guessing, retrieving or calculating the canary value, [David Litchfield](https://www.blackhat.com/presentations/bh-asia-03/bh-asia-03-litchfield.pdf) developed a method that does not require any of these. If the canary does not match, the exception handler will be triggered. If the attacker can overwrite the Exception Handler Structure ([SEH](https://msdn.microsoft.com/en-us/library/windows/desktop/ms680657(v=vs.85).aspx)) and trigger an exception before the canary value is checked, the buffer overflow could still be executed.
+
+#### 5.4.2 Protective Measures
+This introduced a new security measures called SafeSEH.
+
+You can read more about it [here](https://msdn.microsoft.com/en-us/library/9a89h429.aspx) and [here](https://www.corelan.be/index.php/2009/09/21/exploit-writing-tutorial-part-6-bypassing-stack-cookies-safeseh-hw-dep-and-aslr/) you can find a very good article on how to bypass stack canary.
 
 _______________________
