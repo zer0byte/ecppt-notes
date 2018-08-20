@@ -318,7 +318,7 @@ If both DEP and ASLR are enabled, code execution is sometimes impossible to achi
 #### 5.4 Stack Canary and SafeSEH
 Another security implementation that has been developed during the years is the Stack Canary (a.k.a. Stack cookie).
 
-The term canary comes from the [canary in a coal mine](https://en.wiktionary.org/wiki/canary_in_a_coal_mine), and its purpose is to modify almost all t he function's prologue and epilogue instructions in order to place a small random integer value (canary) right before the return instruction, and detect if a buffer overflow occurs.
+The term canary comes from the [canary in a coal mine](https://en.wiktionary.org/wiki/canary_in_a_coal_mine), and its purpose is to modify almost all the function's prologue and epilogue instructions in order to place a small random integer value (canary) right before the return instruction, and detect if a buffer overflow occurs.
 
 As you may have known, most buffer overflows overwrite memory address location in the stack right before the return pointer this means that the canary value will be overwritten too.
 
@@ -327,7 +327,7 @@ When the function returns, the value is checked to make sure that it was not cha
 #### 5.4.1 Bypassing Technique
 In order to bypass this security implementation, one can try to retrieve or guess the canary value, and add it to the payload.
 
-Beside guessing, retrieving or calculating the canary value, [David Litchfield](https://www.blackhat.com/presentations/bh-asia-03/bh-asia-03-litchfield.pdf) developed a method that does not require any of these. If the canary does not match, the exception handler will be triggered. If the attacker can overwrite the Exception Handler Structure ([SEH](https://msdn.microsoft.com/en-us/library/windows/desktop/ms680657(v=vs.85).aspx)) and trigger an exception before the canary value is checked, the buffer overflow could still be executed.
+Beside guessing, retrieving or calculating the canary value, [David Litchfield](https://www.blackhat.com/presentations/bh-asia-03/bh-asia-03-litchfield.pdf) developed a method that does not require any of these. If the canary does not match, the exception handler will be triggered. If the attacker can overwrite the Exception Handler Structure ([SEH](https://msdn.microsoft.com/en-us/library/windows/desktop/ms680657(v=vs.85).aspx) and trigger an exception before the canary value is checked, the buffer overflow could still be executed.
 
 #### 5.4.2 Protective Measures
 This introduced a new security measures called SafeSEH.
