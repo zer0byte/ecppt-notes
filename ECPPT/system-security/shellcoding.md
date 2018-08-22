@@ -167,7 +167,91 @@ This is a very simple C program that will help us test the results of our shellc
 
 __________________________
 ## 5. Creating our First Shellcode
+Although there are many different tools and frameworks that we can use to generate shellcodes automatically, first we will show you how to manually create a shellcode from scratch.
 
+- **Shellcode Goal** <br>
+Create a shellcode that will cause the thread to sleep for five seconds
+- **Function Needed** <br>
+The sleep functionality is provided by the function **Sleep** in *Kernel32.dll* and has the following [definition](https://docs.microsoft.com/en-us/windows/desktop/api/synchapi/nf-synchapi-sleep):
+```
+VOID WINAPI Sleep{
+  __in DWORD dwMilliseconds
+};
+```
+
+The previous function requires a single parameter, which specifies the amount of time to sleep in milliseconds.
+
+However, let's use a Disassembler to obtain the address of the Sleep function; this is required because we will create a small shellcode that calls this function.
+
+#### 5.1. Finding Function Addresses
+We can obtain the address in different ways and with different tools. To use Immunity Debugger, we have to open the *kernel32.dll* file, right-click on the disassemble panel and select *Search for>Name in all modules*.
+
+Once the new window appears, search for *sleep*. Look at the left-most column to know the address.
+
+Another very easy tool that we can use to get the address of a function is **arwin**. You can find it in the **4_Shellcoding.zip** file available in the members' area.
+
+Once downloaded and extracted, we need to run the tool and provide the name of the module and the string to search.
+
+Our command (to look for the address) will look like the following:
+```
+arwin.exe kernel32.dll Sleep
+```
+
+#### 5.2. Creating a small ASM code
+Now that we have the address of the **Sleep** function, and we know that it requires one parameter, the next step is to create a small **ASM** code that calls this function.
+
+Once we have the **ASM** code compiled, we can extract (by decompiling it) the machine code and use it for our shellcode.
+
+As you already know, when a function gets called, its parameters are pushed to the stack.
+
+Therefore, our **ASM** code will first push the parameter to the stack and then call the function **Sleep** by using its address.
+
+The **ASM** code that we will use is:
+```
+xor eax,eax         ; zero out the eax register
+mov eax,5000        ; move the milliseconds value into eax (5000)
+push eax            ; push the function parameter onto the stack
+mov ebx, 0x757d82d0 ; move the address of Sleep into ebx
+call ebx            ; call the function - Sleep(ms);
+```
+
+Please note that we can create many different versions of the same code. For example, we can push *5000* directly onto the stack, without zeroing out the **EAX** register, and save one line of code.
+
+Next, we need to compile our **ASM** code. We have already seen in the previous modules how to do this. The command is:
+```
+nasm -f win32 sleep.asm -o sleep.obj
+```
+If the command works, you should not get any messages, but a new file named *sleep.obj* is created.
+
+It may sound weird that immediately after we have assembled our file, we have to disassemble it. This is because we want the byte code of our **ASM** instructions and to do so we can use **objdump**, as so:
+```
+objdump -o -Mintel sleep.obj
+```
+
+On the left, we have the byte shellcode, while on the right we have the **ASM** code. Our shellcode is almost done, we just need to do some cleaning up. We need to edit and remove the spaces and add the **\x** prefix.
+
+At the end of the process, we will have something like the following:
+```
+char code[]=
+"\x31\x60"
+"\xb8\x88\x13\x00\x00"
+"\x50"
+"\xbb\xd0\x82\x7d\x75"
+"\xff\xd3"
+
+int main(int argc, char **argv)
+{
+  int (*func)();
+  func = (int(*)()) code;
+  (int)(*func)();
+}
+```
+This is required to be able to pass the shellcode to our shellcode debugger. Now we can compile the program and run it. If the shellcode works, you will se that the process waits 5 seconds and then crashes.
+
+**Note:**
+In order for this test to work correctly, you have to know the address of Sleep() function on you own machine
+
+Remember that not only do different OS may have different addresses, if ASLR is enabled, the address is randomized.
 
 __________________________
 ## 6. More Advanced Shellcode

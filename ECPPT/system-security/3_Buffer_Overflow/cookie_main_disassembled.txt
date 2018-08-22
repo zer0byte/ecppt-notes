@@ -1,0 +1,35 @@
+00401290 <_main>:
+  401290:	55                   	push   ebp
+  401291:	89 e5                	mov    ebp,esp
+  401293:	83 ec 18             	sub    esp,0x18 ;Setup stackframe
+  401296:	83 e4 f0             	and    esp,0xfffffff0
+  401299:	b8 00 00 00 00       	mov    eax,0x0 ;Calculate stack cookie
+  40129e:	83 c0 0f             	add    eax,0xf ;The cookie is used
+  4012a1:	83 c0 0f             	add    eax,0xf ;Detect stack overflow
+  4012a4:	c1 e8 04             	shr    eax,0x4
+  4012a7:	c1 e0 04             	shl    eax,0x4
+  4012aa:	89 45 f4             	mov    DWORD PTR [ebp-0xc],eax
+  4012ad:	8b 45 f4             	mov    eax,DWORD PTR [ebp-0xc]
+  4012b0:	e8 ab 04 00 00       	call   401760 <___chkstk>
+  4012b5:	e8 46 01 00 00       	call   401400 <___main>
+  4012ba:	c7 45 fc 00 00 00 00 	mov    DWORD PTR [ebp-0x4],0x0 ;This is our cookie
+  4012c1:	8b 45 fc             	mov    eax,DWORD PTR [ebp-0x4]
+  4012c4:	89 44 24 04          	mov    DWORD PTR [esp+0x4],eax ;Points to cookie variable
+  4012c8:	c7 04 24 00 30 40 00 	mov    DWORD PTR [esp],0x403000 ;Points to cookie = “%08X\n”
+  4012cf:	e8 8c 05 00 00       	call   401860 <_printf>
+  4012d4:	8d 45 f8             	lea    eax,[ebp-0x8]
+  4012d7:	89 04 24             	mov    DWORD PTR [esp],eax
+  4012da:	e8 71 05 00 00       	call   401850 <_gets> ;Call gets
+  4012df:	8b 45 fc             	mov    eax,DWORD PTR [ebp-0x4]
+  4012e2:	89 44 24 04          	mov    DWORD PTR [esp+0x4],eax ;Points to cookie variable
+  4012e6:	c7 04 24 00 30 40 00 	mov    DWORD PTR [esp],0x403000 ;Points to cookie = “%08X\n”
+  4012ed:	e8 6e 05 00 00       	call   401860 <_printf> ;Call printf function
+  4012f2:	81 7d fc 34 33 32 31 	cmp    DWORD PTR [ebp-0x4],0x31323334 ;Compare value of cookie
+  4012f9:	75 0e                	jne    401309 <_main+0x79>
+  4012fb:	c7 04 24 0f 30 40 00 	mov    DWORD PTR [esp],0x40300f ;The if condition
+  401302:	e8 59 05 00 00       	call   401860 <_printf> ;Print “you win”
+  401307:	eb 0c                	jmp    401315 <_main+0x85>
+  401309:	c7 04 24 19 30 40 00 	mov    DWORD PTR [esp],0x403019
+  401310:	e8 4b 05 00 00       	call   401860 <_printf> ;Print “try again”
+  401315:	c9                   	leave  
+  401316:	c3                   	ret      
