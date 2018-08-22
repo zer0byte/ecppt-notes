@@ -177,7 +177,10 @@ ADD ESP, 4            ; add 4 to ESP - adjust the top of the stack
 ###### 3.2.4 CALL Instruction
 Subroutines are implemented by using **CALL** and **RET** instruction pair.
 
-The **CALL** instruction pushes the current instruction pointer (**EIP**) to the stack and jumps to the function address specified. Whenever the function executes the **RET** instruction, the last element is popped from the stack, and the CPU jumps to the address.
+The **CALL** instruction pushes the current instruction pointer (**EIP**) to the stack and jumps to the function address specified.
+
+
+Whenever the function executes the **RET** instruction, the last element is popped from the stack, and the CPU jumps to the address.
 
 Example of **CALL** in Assembly:
 ```
@@ -208,8 +211,15 @@ proc proc_2
 endproc
 ```
 
-You can learn more about assembly online by yourself.
+## 3.2.5. LEAVE Instruction
+Is the same with
 
+```
+mov esp, ebp
+pop ebp
+```
+
+You can learn more about assembly online by yourself.
 _______________________
 ## 4. Tools Arsenal
 #### 4.1 Compilers
