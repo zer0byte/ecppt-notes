@@ -241,9 +241,12 @@ char code[]=
 
 int main(int argc, char **argv)
 {
-  int (*func)();
-  func = (int(*)()) code;
-  (int)(*func)();
+  // Declares a function pointer for a function with
+  // unspecified arguments and with return type int
+  int (*func)();          // Declares the pointer          
+  func = (int(*)()) code; // Initialize the poniter so it points to the  
+                          // function code
+  (int)(*func)();         // Executes it
 }
 ```
 This is required to be able to pass the shellcode to our shellcode debugger. Now we can compile the program and run it. If the shellcode works, you will se that the process waits 5 seconds and then crashes.
@@ -255,7 +258,97 @@ Remember that not only do different OS may have different addresses, if ASLR is 
 
 __________________________
 ## 6. More Advanced Shellcode
+The function we are going to use  to spawn the command prompt will be *ShellExecute*. We could have used a much simpler function such as *WinExec*, but *ShellExecute* will allow us to show a few important concept such as dealing with string parameters and parameters order.
 
+The source code we are going to use is the following. This simple code will spawn a new command prompt and will maximize the window. Please refer to Microsoft library page for [ShellExecute](https://msdn.microsoft.com/en-us/library/windows/desktop/bb762153%28v=vs.85%29.aspx) to understand the purpose of each parameter.
+
+```
+#include <windows.h>
+int main(int argc, char** argv)
+{
+  ShellExecute(0,"open,"cmd", NULL,0,SW_MAXIMIZE);
+}
+```
+
+Once we have the source code ready, we just need to compile it. If we inspect the program with Immunity Debugger we should see something like this:
+```
+PUSH EBP
+MOV EBP, ESP
+PUSH ECX
+SUB ESP,24
+CALL winexecs.02401EB0
+MOV DWORD PTR SS:[ESP+14],3
+MOV DWORD PTR SS:[ESP+10],0
+MOV DWORD PTR SS:[ESP+C],0
+MOV DWORD PTR SS:[ESP+8],winexecs.00404000
+MOV DWORD PTR SS:[ESP+4],winexecs.00404004
+MOV DWORD PTR SS:[ESP],0
+MOV EAX,DWORD PTR DS: [<&SHELL32.ShellExecuteA>]
+CALL EAX
+SUB ESP,18
+```
+
+This code is quite similar to the previous one. Once the main function starts, it sets the stack frame and then it pushes the arguments needed for the *ShellExecuteA* call. Notice that *ShellExecuteA* is the ANSI name of the function that will be used.
+
+#### 6.1 Dealing With Parameters
+The biggest difference from the previous example is that this time we have more parameters to push to the stack. Moreover, we will also have to deal with strings such as **cmd** and **open**. Dealing with strings means that we have to:
+1. Calculate their Hex value
+2. Push the string
+3. Push a pointer to the string into the stack
+
+First, as you can see, the parameters are pushed in the reverse order. In the C++ source code, the first parameter is 0, while in the disassembled code, the instruction that pushes this parameter to the stack is the last one.
+
+###### 6.1.1 Dealing with Strings
+The first thing to do is to convert the strings (**cmd** and **open**) that we will push into the stack.
+
+In the compiled version of the program, these strings are taken from the *.data* section. As you can imagine, this is something that we cannot do while sending our shellcode (since the *.data* section will contain something different).
+
+Therefore, we will have to push the strings to the stack and then pass a pointer to the string to the *ShellExecutionA* function (we cannot pass the string itself).
+
+Things to remember when pushing the strings into the stack:
+- They must be exactly 4 byte aligned
+- They must be pushed in the reverse order
+- Strings must be terminated with *\x00* <br>
+  Otherwise the function parameter will load all the data in the stack. String terminators introduce a problem with the NUll-free shellcode. Therefore if, the shellcode must run against string functions (such as *strcpy*), we will have to edit the shellcode and make it NULL-free. We will se this later on.
+
+**General Steps:**
+1. **Split the strings into groups of 4 characters**<br>
+  Our string will be something like following:
+```
+"calc"
+".exe"
+```
+
+2. **Reverse the order**
+```
+".exe"
+"calc"
+```
+
+3. **Convert to ASCII**
+```
+"\x2e\x65\x78\x65"    => ".exe"
+"\x63\x61\x6c\x63"    => "calc"
+```
+
+4. **Add PUSH bytecode**
+```
+"\x68\x2e\x65\x78\x65"    // PUSH ".exe"
+"\x68\x63\x61\x6c\x63"    // PUSH "calc"
+```
+
+5. **Terminate the String**
+```
+"\x68\x20\x20\x20\x00"    // The \x00 is the terminator, while \x20 is SPACE
+"\x68\x2e\x65\x78\x65"    // PUSH ".exe"
+"\x68\x63\x61\x6c\x63"    // PUSH "calc"
+```
+
+**Tips:**
+- [Opcode reference](https://defuse.ca/online-x86-assembler.htm#disassembly) or Metasm
+- Pushing byte opcode : `\x6A`
+- Pushing word or dword opcode : `\x68`
+- [List of opcodes for other types](https://c9x.me/x86/html/file_module_x86_id_269.html)
 
 __________________________
 ## 7. Shellcode and Payload Generators
