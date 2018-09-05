@@ -534,7 +534,12 @@ The new bytecode (NULL-free) will be something like the following:
 ```
 
 ###### 6.2.2 Encoder Tools
-
+You can use msfvenom as an encoder tools to do this also
 
 __________________________
 ## 7. Shellcode and Payload Generators
+You can use some powerful tools in order to create some shellcode.
+The famous tools that allow us to automatically generate shellcodes and payloads are:
+- [msfvenom](https://github.com/rapid7/metasploit-framework/wiki/How-to-use-msfvenom)
+- [the backdoor factory](https://github.com/secretsquirrel/the-backdoor-factory)
+- [veil-framework](https://github.com/Veil-Framework/)
