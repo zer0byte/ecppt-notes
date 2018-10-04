@@ -367,7 +367,7 @@ ______________________________________
 DNS lookup is the simplest query a DNS server can receive. It asks the DNS to resolve a given hostname to the corresponding IP. You can do so with `nslookup`
 
 In order to collect the highest number of domains and subdomains related to the organization, we can use different techniques.
-- DNS Lookup (and reverse DNS Lookup)
+- DNS Lookup (and reverse DNS Lookup)<br>
   ```
   nslookup domainname.com
   ```
@@ -384,7 +384,7 @@ In order to collect the highest number of domains and subdomains related to the 
   dig ipaddress PTR
   ```
 
-- MX Lookup
+- MX Lookup<br>
   Retrieve list of servers responsible for delivering emails for that domain.
   ```
   nslookup -type=MX domainname.com
@@ -394,7 +394,7 @@ In order to collect the highest number of domains and subdomains related to the 
   nslookup domainname.com MX
   ```
 
-- Zone Transfers
+- Zone Transfers<br>
   Zone transfers are usually misconfiguration of the remote DNS server. They should be enabled only for trusted IP addresses.
   When zone transfers are enabled, we can enumerate the entire DNS record for that zone. This includes all sub domains of our domain (A records)
 
@@ -423,6 +423,51 @@ In order to collect the highest number of domains and subdomains related to the 
 Once we have found the number of hostnames related to t he organization, we can move on determining their IP addresses and, potentially any Netblocks associated with the organization.
 
 Mail servers, name servers, domains, and subdomains will all be used in this phase.
+
+Steps:
+1. Resolve all hostnames we have in order to determine the IP addresses used
+  ```
+  nslookup ns.targetorg.com
+  Server: 192.168.254.254 // DNS that will handle the query
+  Address: 192.168.254.254
+
+  Non-authoritative answer:
+  Name: targetorg.com
+  Address: 66.200.110.100 // IP address
+  ```
+2. Is this IP address hosting only that given domain?
+
+  It is possible that more than one domain is configured on the same IP address, even if a *PTR* record is not set.
+  This is a common scenario with shared hosting where hundreds of websites are configured on the same server.
+  This is also typical in corporate network where multiple sub domains run on the same web server.
+
+  For example, you have discovered that the name server of the target organization is on `66.200.110.100`. How do you determine other sub domains on the same IP?
+
+  The first technique to try is a reverse lookup. The second is asking Google or Bing.
+
+  Bing offers a query filter that returns all the websites hosted on a given IP address. We just need to use the `ip` filter, followed by the IP address of our target, e.g.:`ip: 199.193.116.231`.
+
+  Other tools:
+  - [Domain-neighbors](http://www.tcpiputils.com/domain-neighbors)
+  - [Domaintools](http://reverseip.domaintools.com/)
+  - [Robtex](https://www.robtex.com/)
+
+  Repeat the process until you are satisfied with the data enumerated.
+  For larger engagement, you will have to map IP addresses and related domains using mind mapping tools.
+
+3. Who does this IP address belong to?
+  - Netblock
+    A netblock is a range or set of IP addresses, usually assigned to someone and has both a starting and an ending IP address. Larger netblock are given to larger organization.
+    Example: `192.168.0.0-192.168.255.255`
+
+    This netblock can also be described as follows:
+    - 192.168.0.0/16 (CIDR notation)
+    - 192.168.0.0 with netmask 255.255.0.0
+  - Autonomous System
+    An Autonomous System is made of one or more netblocks under the same administrative control. Big corporations and ISP's have an autonomous system, while smaller companies will barely have a netblock.
+
+  You can find out the owner of a netblock or Autonomous System using WhoIs
+
 
 __________________________
 ## 1.5. Tools
