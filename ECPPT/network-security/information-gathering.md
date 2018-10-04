@@ -318,7 +318,7 @@ A wealth of information can be obtained from WhoIs searches that will kickstart 
 
 Note that RIRs are not responsible of the information within the databases they maintain. The responsibility for the records validity belongs to the individual organizations. They have to keep their record information accurate and up to date.
 
-###### 1.4.1.2. DNS Records
+###### 1.4.1.1. DNS Records
 DNS is a distributed database arranged hierarchically. Its purpose is to provide a means to use hostnames rather than IP addresses.
 
 DNS is a key aspect of Information Security as it binds a hostname to an IP address and many protocols such as SSL are as safe as the DNS protocol they bind to.
@@ -419,7 +419,7 @@ In order to collect the highest number of domains and subdomains related to the 
   dig axfr @domainname.com domainname.com
   ```
 
-#### 1.4.2. IP
+#### 1.4.1.3. IP
 Once we have found the number of hostnames related to t he organization, we can move on determining their IP addresses and, potentially any Netblocks associated with the organization.
 
 Mail servers, name servers, domains, and subdomains will all be used in this phase.
@@ -468,6 +468,62 @@ Steps:
 
   You can find out the owner of a netblock or Autonomous System using WhoIs
 
+#### 1.4.2. Networks/IPs
+###### 1.4.2.1. Live Hosts
+We have a list of IP addresses.
+Now we need to identify which of those is alive and determine each of the role played by each IP in the target organization. For example, is it a server or a workstation?
+
+In this early phase we do not want to enumerate the services. This will be subject of next stages.
+
+We can:
+1. Determine which IPs are alive
+2. Determine if they have an associated host name/domain
+
+By uncovering additional domains and host names associated to these IP addresses, we will gather additional information and apply the information gathering techniques on both host names and domains that we have already studied.
+
+There are different methods that one can use to identify live hosts. The most common is the **ICMP ping sweep**. It consists of ICMP ECHO requests sent to multiple hosts.
+If a given host is alive, it will return an ICMP ECHO reply.
+
+Many tools allows us to do this:
+- [fping](http://fping.org/)
+- [nmap](http://nmap.org/book/man-host-discovery.html)
+- hping
+
+###### 1.4.2.2. Further DNS
+This steps deals with using `nmap` to enumerate all the DNS servers that exist in the remote network. This step can be done more than once, because each time we find a new domain or a new IP, it could give us other useful information to aid us in further investigations.
+
+In order to determine id a DNS servers are in place in a given netblock, we should first know something more about DNS. A DNS server runs on:
+- TCP port 53
+- UDP port 53
+
+We can increase our surface by using nmap to scan the entire network and find hosts that we have these ports open. To do this, we can use the following two commands:
+```
+nmap -sS -p53 netblocksearched
+```
+```
+nmap -sU -p53 netblocksearched
+```
+
+The first can be used to run a TCP scan, while the second can be used to run a UDP scan.
+
+Once we retrieve more DNS servers, we can perform a reverse lookup to find out if they are serving any particular domain.
+
+Moreover, we can try zone transfer techniques on them as well as any of the techniques studied before.
+
+###### 1.4.2.3. Maltego
+Maltego uses what it calls *transformation* to discover information about specific targets.
+
+For instance you can begin with a server address and enumerate various information regarding that server, then build on that information until you have a full map of the entities entire internet presence.
 
 __________________________
 ## 1.5. Tools
+List of tools that you can use for information gathering:
+- [DNSdumpster](https://dnsdumpster.com/)
+- [DNSEnum](https://github.com/fwaeytens/dnsenum)
+- Fierce
+- [Dnsmap](https://github.com/makefu/dnsmap)
+- Metagoofil
+- [FOCA](https://www.elevenpaths.com/labstools/foca/index.html)
+- Maltego
+- Dmitry
+- Recon-ng
