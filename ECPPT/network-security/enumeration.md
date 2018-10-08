@@ -104,7 +104,7 @@ Before Windows 2000, SMB ran only with NetBIOS over TCP/IP (port 139), therefore
 
 Windows 2000 and higher allow us to run [SMB directly over TCP/IP](https://support.microsoft.com/en-us/kb/204279) (direct hosting), without the need to run over NetBIOS sessions. To do this, the TCP port 445 is used.
 
-Since SMB provides several features such as manipulating files, sharing, messaging, Interprocess Communication (IPC) and more, it is one of the most attractive service to explore during our enumeration phase.
+Since SMB provides several features such as manipulating files, sharing, messaging, Inter-process Communication (IPC) and more, it is one of the most attractive service to explore during our enumeration phase.
 
 #### 3.2.4. NetBIOS Commands and Tools
 We will explore different commands and tools that can be used to enumerate system information using NetBIOS. The one we will use the most is the famous `nbstat`.
@@ -303,11 +303,239 @@ Notice hat some of these tools are very old and OS dependent, therefore, we will
   ...
   ```
 
-###### 3.2.5.3. DumpSec
+###### 3.2.5.3. DumpSec (Windows)
+DumpSec is an auditing tool that is able to gather file system information, registry, shares, users, groups, and much more. It can be used both via GUI or CLI.
 
+Steps:
+1. Click `Report` -> `Select Computer` -> Insert Target IP
+2. Click `Report` -> `Dump Users as column`
+3. After everything is set, click `OK`
+
+As you can imagine, depending upon the selected report you can gather a large a mount of valuable information from the remote system. Moreover, the tool allows us to both search and export the result for later inspection.
+
+Be sure to gather all the information you think may be useful for later phases of the penetration test.
+
+###### 3.2.5.4. Enum4linux (Linux)
+[Enum4linux][https://labs.portcullis.co.uk/tools/enum4linux/] is a wrapper around *rpcclient*, *net*, *nmblookup* and *smbclient*.
+
+As you will see, enum4linux is both very easy to use and returns a great deal of valuable information. We can run it with the following command (for output see image):
+```
+enum4linux <targetIPAddress>
+```
+
+Enum4linux will gather and organize the information in the following way:
+- Target information
+- Workgroup/Domain
+- Domain SID
+- OS Information
+- Users
+- Share Enumeration
+- Password Policy
+- Groups
+- Users SID
+- Printer Info
+
+###### 3.2.5.5. Rpcclient (Linux)
+[rpcclient][https://www.samba.org/samba/docs/man/manpages/rpcclient.1.html] is a tool that can execute Microsoft RPC (Remote Procedure Call) functionalities. As we will see in the future slides, it offers a multitude of command that we can run on a remote machine.
+
+In order to use it however, we must first establish a connection to the remote machine with the following command:
+  ```
+  rpcclient -N -U "" <targetIPAddress>
+  ```
+
+  where:
+  - `-N` instructs the rpcclient not to ask a password
+  - `-U` "" sets the network username (none in this case)
+
+  You can list all the available commands with the `help` command.
+    There is a very long list of commands. For example, we can retrieve users available on the machine using the following command:
+    ```
+    rpcclient $> enumdomusers
+    user:[Administrator] rid:[0x1f4]
+    user:[eLS] rid:[0x3eb]
+    user:[Frank] rid:[0x3ed]
+    user:[Guest] rid:[0x1f5]
+    user:[HelpAssistant] rid:[0x3e8]
+    user:[netadmin] rid:[0x3ec]
+    user:[SUPPORT_388945a0] rid:[0x3ea]
+    rpcclient $>
+    ```
+  It also have an autocomplete feature by tapping `tab` twice.
+
+Small list of useful commands:
+- `numalsgroups`
+- `srvinfo`
+- `lookupnames`
+- `queryuser`
+- `enumprivs`
 
 __________________________
-## 3.3. SNMP
+## 3.3. SNMP (Simple Network Management Protocol)
+SNMP is used for exchanging management information between network devices.
+For example, SNMP may be used to configure a router or simply check its status.
+
+#### 3.3.1. What and Where it is used
+In the SNMP protocol there is a manager and a number of agents. The agents either wait for commands from the manager or send critical messages (trap) to the manager. The manager is usually a system administrator.
+
+There are 4 types of SNMP commands used to control and monitor managed devices:
+  - Read : used to monitor devices
+  - Write : used to configure devices and change device settings
+  - Trap : used to *trap* events from the device and report them back to the monitoring system (asynchronously, without especially being asked by the NMS)
+  - Traversal Operations : used to determine what variables a certain device supports
+
+There are multiple versions of SNMP:
+  - *SNMPv1* is both the original and most vulnerable (cleartext protocol)
+  - *SNMPv2* is just as likely to be compromised given its inherent weaknesses
+  - *SNMPv3* is the newest version and, although it uses encryption, it is still susceptible to attacks like brute forcing
+
+#### 3.3.2. How It Works (Agents, NMS, MIB, ...)
+SNMP receives general messages on UDP port 161 and trap messages on UDP 162. SNMP works on the basis that network management systems send out request and the managed devices (agents) return a response. This is implemented using one of four operations (similar to HTTP verbs) `Get`, `GetNext`, `Set`, and `Trap`.
+
+SNMP messages consists of a header and a PDU (Protocol Data Units). The header consists of the SNMP version number and the **community string**, **which is used as a form of "secure" password authentication in SNMP**.
+
+It is important to know that there are 2 types of community names of strings:
+- Private community strings : allow access to *write* rights
+- Public community string : allows *read* access rights on the system
+
+The PDU depends on the type of message that is being sent.
+  The `Get`, `GetNext`,and `Set`, as well as the PDU responses, consists of:
+  - PDU type
+  - Request ID
+  - Error status
+  - Error Index
+  - Other Object/variable fields
+
+  The `Trap` contains files like:
+  - Enterprise
+  - Agent
+  - Agent address
+  - Generic trap type
+  - Specific trap code
+  - Timestamp
+  - Object/value
+
+[MIB](http://docs.oracle.com/cd/E13161_01/tuxedo/docs10gr3/snmpmref/1tmib.html#wp1032892)**s (Management Information Base) is a collection of definitions which define the properties of the managed object on the device (such as router, switch, etc.).**
+
+  In other words, it is a database of information that is relevant to the network manager.
+
+In order to keep items well organized, the database is structure as a tree, thus, each object of this tree has a number and a name.
+
+  The complete path, from the top of the tree, down to the point of interest, forms the name of that point called OID (Object IDentifier)
+
+  Nodes near the to of the tree are extremely general in nature.
+
+  You will find that all of the OID's will start with `1.3.6.1`. Each leaf in the tree is a property of the device that can be read/written by the manager.
+
+  A query will have to specify the OID address such as `1.3.6.1.4.1.140.305` (beaDomainList) (see illustration for the tree)
+
+  As one moves further down, the names become more and more specific. Once near the bottom, each node represents a particular feature on a specific device (or **agent**).
+
+#### 3.3.3. SNMP Attacks
+The following is a brief list of attacks that one can run against SNMP, which we will inspect in detail in the future:
+- Flooding <br>
+  DOS attack which involves spoofing an SNMP agent and flooding the SNMP trap management with tens of thousands of SNMP traps, varying in size from 50 bytes to 32 kilobytes, until the SNMP management is unable to function properly.
+- Community <br>
+  Using Default community string to gain privileged access to systems
+- Brute Force <br>
+  Using a tool to guess the community strings used on a system to achieve elevated privileges
+
+Enumeration of SNMP information happens by utilizing tools and methods to list the information available within the system. The type and amount of information will depend on the community string obtained, therefore, **the first skill to master is how to obtain community strings**.
+
+  1. Obtain a community string by sniffing the network traffic
+    Since SNMPv1 and SNMPv2 utilize clear text communications, it is easy to sniff the passwords coming from the network management systems.
+
+  2. Obtain a community string by using a dictionary attack
+    As you can imagine, having a good dictionary is key when performing this type of attack. Beware though, most current Network Intrusion Detection Systems will alert to this activity as it sees the multiple login attempts with different strings.
+
+Once we acquire the string, we can move on to other tools in order to extract information from the remote device. Notice that *read* access is enough to extract a wealth of information (useful for later attacks).
+
+Now that we know the steps to perform, let us see what tools we can use:
+#### 3.3.3.1. snmpwalk
+[snmpwalk][http://www.net-snmp.org/docs/man/snmpwalk.html] (part of the [Net-SNMP][http://www.net-snmp.org/] suite) uses `SNMP GETNEXT` request to query a network entity for a tree of information.
+
+Since an object identifier (OID) may be given on the command line, knowing the OID of the target device may be very useful.
+
+This OID specifies which portion of the object identifier space will be searched using `GETNEXT` request.
+
+All variables in the subtree below the given OID are queried and their values presented to the user. If no OID is present, snmpwalk will search the subtree rooted at `SNMPv2-SMI::mib-2` (including any MIB object values from other MIB modules that are defined as lying within this subtree).
+
+If the network entity has an error processing the request packet, an error packet will be returned. A message will then be shown, helping to pinpoint the request was malformed.
+
+If the tree search attempts to search beyond the end of the MIB, the message "End of MIB" will be displayed.
+
+In basic scenario, snmpwalk takes as single IOD, and displays a list of all the results. These resided within the subtree rooted on this OID.
+
+We will show a snippet of output. Notice that, since the tool outputs a wealth of information, we may want to pipe the requests to files for later inspections.
+  ```
+  stduser@els:~$ snmpwalk -v 2c 192.168.102.149 -c public
+  SNMPv2-MIB::sysDescr.0 = STRING: Hardware: Intel64 Family 6 Model 42
+  Stepping 7 AT/AT COMPATIBLE - Software: Windows Version 6.1 (Build 7601 Multiprocessor Free)
+  SNMPv2-MIB::sysObjectID.0 = OID: SNMPv2-SMI::enterprises.311.1.1.3.1.1
+  DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (872094) 2:25:20.94
+  SNMPv2-MIB::sysContact.0 = STRING:
+  SNMPv2-MIB::sysName.0 = STRING: els
+  SNMPv2-MIB::sysLocation.0 = STRING:
+  ```
+  The `-v` option specifies the SNMP version to use (`2c`), while `-c` stse the community string to use (`public`).
+
+  If the output returns the OID numerically, as the following example:
+    ```
+    iso.3.6.1.2.1.1.1.0 = STRING: "Hardware: INtel64 Family ..."
+    ```
+  Please be sure to install the `snmp-mibs-downloader` package. Once installed, comment the fourth line in the following file `/etc/snmp/snmp.conf`
+
+snmpwalk can also be used with either a single MIB object, or even an exact OID instance (returning the corresponding value), as follows:
+  ```
+  snmpwalk -c public -vl 192.168.102.149 hrSWInstalledName
+  ```
+
+Conversely, it is also possible to start the walk at a higher level, retrieving more than one group of information. This would typically retrieve all the information known to an agent.
+
+snmpwalk is very useful in gaining information form a system but, as stated earlier, one must minimally understand how SNMP work. Checking the manual is strongly suggested, since it offers both useful and customizable options.
+
+
+#### 3.3.3.2. snmpset
+[snmpset][http://www.net-snmp.org/docs/man/snmpset.html] (part of the Net-SNMP suite) is an SNMP application that uses `SNMP SET` requests to either set or change information on a network entity.
+
+In other words, the `SET` operation allows either the management application or the manager, to set the value of an attribute (of a managed object) in the agent.
+
+Please note that one or more OIDs must be given as arguments on the command line.
+In addition to the OID, a `type` (string, integer, etc.) and a `value` must also be provided.
+
+Before actually setting the new value for a specific object, let's first check its actual value with *snmpwalk*. In out example we will target the `sysContact` OID:
+  ```
+  snmpwalk -v 2c -c public 192.168.102.149 system.sysContact.0
+  SNMPv2-MIB::sysContact.0 = STRING: admin@els.com
+  ```
+  As we can see, at the moment, the value is set to `admin@els.com` and the type is `STRING`.
+
+Let us now try to both change its value with the following snmpset command and then print its value to verify the changes.
+  ```
+  snmpset -v 2c -c public 192.168.102.149 system.sysContact.0 s new@els.com
+  SNMPv2-MIB::sysContact.0 = STRING: new@els.com
+  ```
+  Above, `s` tells the snmpset that we want to use a `STRING` type, while `new@els.com` is the new value for the entity.
+
+Let us run the snmpwalk once again and see what we get:
+  ```
+  snmpwalk -v 2c -c public 192.168.102.149 system.sysContact.0
+  SNMPv2-MIB::sysContact.0 = STRING: new@els.com
+  ```
+
+  Notice that in snmpset the `-v` and `-c` options are used in the same way as snmpwalk. The only difference really is that we have two new arguments: one for the type (`s`) and one for the value we are going to get (`new@els.com`).
+
+
+#### 3.3.3.3. Nmap SNMP script
+
+
+
+
+
+
+
+
+
+
 
 
 __________________________
