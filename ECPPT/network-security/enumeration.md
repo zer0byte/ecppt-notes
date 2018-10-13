@@ -526,7 +526,17 @@ Let us run the snmpwalk once again and see what we get:
 
 
 #### 3.3.3.3. Nmap SNMP script
+Nmap comes with some basic scripts: `snmp-brute`, `snmp-interfaces`, `snmp-netstat`, `snmp-processes`, `snmp-sysdescr`, `snmp-win32-services`, `snmp-info`, and more.
 
+You can list them by navigating into the Nmap script folder and then running the following command:
+```
+stduser@els:/usr/share/nmap/scripts& ls -l | grep -i snmp
+```
+
+Depending on the script you wish to run, you may have to set different options. Most of these can be executed with the following syntax as long as you are running as root:
+```
+nmap -sU -p 161 --script=<script_name> <IP_adress>
+```
 
 
 
