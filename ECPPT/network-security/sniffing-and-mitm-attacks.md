@@ -216,10 +216,232 @@ __________________________
 
   In other words, you can feed dsniff with a pcap (packet capture) file from Wireshark and let it analyze the traffic.
 
+  Example:
+    In our example we run dsniff with root privileges. It will automaticaly attach itself to our main interface: *eth0*.
+    Once the user logs in, dsniff lists the following as output.
+    ```
+    stduser@els:~$ sudo dsniff
+    dsniff: listening on eth0
+    -----------------
+    12/30/15 04:32:21 tcp 192.168.1.6.43709 -> 192.168.1.1.60 (http)
+    GET /login.cgi?username=admin&password=password HTTP/1.1
+    Host: 192.168.1.1
 
+    -----------------
+    12/30/15 04:33:23 tcp 192.168.1.6.43713 -> 192.168.1.1.60 (http)
+    GET /login.cgi?username=admin&password=password HTTP/1.1
+    Host: 192.168.1.1
+
+    -----------------
+
+    ```
+
+  Although dsniff is a valid tool, if we want to inspect deeper the traffic and the credentials sent in the network, there are more powerful tools that we can use.
+
+
+#### 4.4.2. Wireshark
+Steps on working with Wireshark:
+1. Select Interface
+  First we start Wireshark and select the interface to use for the sniffing. Be sure to select the correct interface. In case you are attached to the network via Wi-Fi, you will probably use the wireless LAN interface *wlan0*.
+
+  Then, since in our test we are looking at a web application, we will set the capture filter to only watch HTTP traffic.
+
+2. Pick a Log File
+  In addition to the previous settings, we also want to save our results to a file called **eth0_packet_configure_http**.
+  Notice that all these options can be configured by clicking on the *capture option* button.
+
+3. Start the Capture
+  Notice that with the filter selected, we will see every packet sent and received to and from port 80 (HTTP). If we want to display only HTTP traffic, we can add the word **http** in the expression field.
+
+4. Filter Packets
+  Depending on the authentication mechanism implemented on the target web application, we will have to apply specific filters in order to get only the meaningful packets.
+
+    For example, if the application implements a basic HTTP authentication mechanism, we can use the **http.authbasic** filter, which will list all the packets containing credentials sent to the application.
+
+    We can apply filters in 2 different ways:
+    1. Write the filter in the filter field
+    2. Click on Expression and Select **HTTP -> http.authasic - Credentials**
+
+5. Study Packets
+  We can inspect the packet in the bottom panel of Wireshark, or we can right click on the packet and select **Show Packet in a New Window**.
+
+  Then, look for the major heading named **Hypertext Transfer Protocol**
+
+  Once there we have to open the child node named **Authorization: Basic <string>**, and look for the **Credentials** line. Here we can find the credentials used for the authentication.
+
+#### 4.4.3. [TCP Dump](http://www.tcpdump.org/)[Manual](http://www.tcpdump.org/manpages/tcpdump.1.html)
+  tcpdump is a powerful packet sniffer that runs via command line.
+  It allows the user to intercept and display and display TCP/IP and other packets being transmitted or received over a network, to which the computer is attached.
+
+  Much like Wireshark, tcpdump has the ability to filter the traffic and save the packets to a file for later analysis.
+
+  We will now cover some basic capabilities
+
+  Basic syntax:
+    ```
+    tcpdump [options] [filterexpression]
+    ```
+
+  In our example, we want to see all traffic on our main network interface (eth0), so we will use the following command:
+    ```
+    sudo tcp dump -i eth0
+    ```
+
+    This states that we want to run tcpdump as root and monitor the eth0 network interface. Since no other options have been added, we will see all packets transmitted.
+      ```
+      stduser@els:~$ sudo tcpdump -i eth0
+      [sudo] password for stduser:
+      tcpdump: verbose input surpressed, use -v or -vv for full protocol decode
+      listening on rth0, link-type EN10B (Ethernet), capture size 262144 bytes
+      09:18:02.133182 IP 192.68.103.1.17500 > 192.168.102.255.17500: UDP, length 200
+      09:18:02.854919 IP 192.68.103.147.56976 > 192.168.102.2.domain: 53964+ 255.102.168.192.in+addr.arpa. (46)
+      09:18:02.864964 IP 192.68.103.2.domain > 192.168.102.147.56976: 53964 NXDOMAIN 0/0/0 (46)
+      09:18:02.865051 IP 192.68.103.147.59910 > 192.168.102.2.domain: 12279+ PTR? 1.102.168.192.in-addr.arpa. (44)
+      09:18:02.875296 IP 192.68.103.2.domain > 192.168.102.147.59910: 12279 NXDomain 0/0/0 (44)
+      09:18:03.848147 IP 192.68.103.147.48873 > 192.168.102.2.domain: 27140+ PTR? 2.102.168.192.in.addr.arpa. (44)
+      09:18:03.858098 IP 192.68.103.2.domain > 192.168.102.147.48873: 27140  NXDomain 0/0/0 (44)
+      09:18:03.858183 IP 192.68.103.147.50818 > 192.168.102.2.domain: 50563+ PTR? 147.102.168.192.in-addr.arpa. (46)
+      09:18:03.867137 IP 192.68.103.2.17500 > 192.168.102.147.50818: 50563 NXDomain 0/0/0 (44)
+      ```
+
+    We can inspect in more detail by using adding parameters to our previous command:
+      ```
+      -xxAXXSs 0 dst 192.168.102.139
+      ```
+
+    Description (see image for example):
+    - `-s 0` we set the MTU size to 0, in order to get the entire packet
+    -  `-dst` Shows only the communications with the destination specified
+    -  `-A` Print each packet (minus its link level header) in ACII
+    -  `-XX` When parsing and printing, in addition to printing the headers of each packet, print the data of each packet including its link level header, in hex
+    -  `-xx` When parsing and printing, in addition to printing the headers of each packet, print the data of each packet, including its link level header, in hex
+    -  `-S` Print absolute, rather than relative, TCP sequence numbers
+    -  `-s` Snaf snaplen, bytes of data from each packet rather than the default of 68 <br>
+        68 bytes is adequate for IP, ICMP, TCP, and UDP but may truncate protocol information from name server and NFS packets (see below). Packets truncated because of a limited snapshot are indicated in the output with **[|proto]**, where is the name of the protocol level at which the truncation has occurred. Note that taking larger snapshots both increases the amount of time it takes to process packets and effectively decreases the amount of packet buffering. This may cause packets to be lost. Setting snaplen to 0 means to use the required length to catch whole packets.
+
+    From the output we can see that only the traffic aimed to the host **192.168.102.139** is displayed. Indeed, we can see part of the way handshake (SYN and ACK) and then the packet containing the data sent to the server.
+
+    We can also see that the traffic is sent to a webserver, indeed the destination address and port are displayed as follows:
+    ```
+    09:57:32.763851 IP 192.168.102.147.43357 > 192.168.102.139.http: Flags [S],
+    seq 661243647, win 29200, options [mss 1460, sackOK,TS val 6706799 ecr 0, nop, wscale 7], length 0
+            0x0000: 000c 2978 6331 000c 29d3 f371 0800 4500 ..)xc..)..q..E.
+    ```
+
+    The previous output may contain a lot of information. If we want a simpler output, we can just remove some of the parameters, and run the following command (see image):<br>
+      ```
+      sudo tcpdump -i eth0 -vvvASs 0 dst 192.168.102.139
+      ```
+
+      Here we removed all the hexadecimal output but we increased the output verbosity with the `-vvv` argument.
+
+    As you can see in the output, the data contains the same **Authorization** header seen before with Wireshark.
+
+      The only difference is that Wireshark automatically decodes the base64 encoded text for us. So, when using tcpdump, we will have to decode the information manually.
+
+      There are different tools and web applications that we can use to do that. We can use BurpSuite, the web browser console, command line, or online tools such as [bsae64decode](https://www.base64decode.org/).
+
+  If you are running on a Windows machine, you can use [Windup](https://www.winpcap.org/windump/).
 
 __________________________
 ## 4.5. Man in the Middle Attacks
+#### 4.5.1. What they are
+As you already know, MitM is an attack in which the attacker is able to read, modify, or insert arbitrary data in packets transmitted between 2 peers.
+
+The most simple scenario of a MitM attack can be described as follows:
+  The attacker is able to gather the packets sent from the legitimate source of data transfer; these packets would then be redirected unmodified to the legitimate destination peer, which will not be able to understand the path the packet had followed.
+
+MitM is an advanced technique and requires some prerequisites for the attack to be successful. The most common use of this attack is in LAN due to lac of security in Layer 2-3 protocols such as ARP and DHCP.
+
+Let us see the attacks in details.
+
+#### 4.5.2. ARP Poisoning for MitM
+ARP poisoning can be exploited to add fake information between 2 communication peers into a local network.
+In a scenario in which M (the attacker) wants to listen to all the traffic between A and B, M would have to send fake IP-MAC pairs to both A (server) and B (client), making himself the Man in the Middle.
+
+The following are the steps for a successful attack:
+  1. M would pretend to be B to A: it will send a gratuitous ARP reply with the pair: **IP_B->MAC_M**
+  2. M would pretend to be A to B: it will send a gratuitous ARP reply with the pair: **IP_A->MAC_M**
+
+  Because of the TTL in hosts ARP caches, an attacker would need to send these packets at interval lower than the timeout (usually every 30 seconds is a good choice).
+
+  Once the gratuitous ARP packet is sent, B's ARP cache gets poisoned with the entry: **IP_A->MAC_M**
+
+  Next time B wants to send a packet to A, it will be forwarded to M.
+
+This attack leaves the MAC address of the attacker in the ARP cache of the victims.
+
+Another gratuitous ARP with correct values would restore the correct values after the sniffing is completed.
+
+Countermeasures:
+  Using static ARP is not a feasible approach into a large and always changing networks. Tools like *arpwatch* or *arpcop* can detect but not stop such attacks.
+
+
+#### 4.5.3. Local to Remote MitmM
+When a host in a LAN wants to send packets to hosts outside the LAN it uses the default gateway.
+Default gateway MAC address must be used to forward the packet along with the correct IP address configured by administrator or given by DHCP.
+
+The use of ARP poisoning in this scenario leads to a MitM attack from local to remote.
+
+(See the diagram) Host A sends all the traffic aimed for the internet through the Attacker.
+
+The following describes the steps that take place in the previous scenario:
+1. Host A wants to send packets to the internet. It already has the IP of the gateway (IP_G) and it needs the associated MAC address.
+2. M can use a gratuitous ARP reply to advertise itself as the default gateway: binds IP_G with his own (MAC_M)
+3. All the traffic meant to leave the LAN will pass through M, which will then redirect it to the real gateway
+
+#### 4.5.4. DHCP Spoofing
+DHCP is a service usually running on routers to dynamically assign or revoke IP address to new hosts on the network.
+  The protocol is based on the UDP protocol and consists of an exchange of messages that are mostly sent in broadcast and are visible to the entire broadcast domain.
+
+  A host trying to enter the network asks for an IP. It will pick the best offer and use that IP address from that point on.
+
+It is important to know hat if the whole communication succeeded, the DHCP server will also set the client default gateway. Due to its implementation, an attacker can spoof the DHCP messages in order to mount a MitM attack.
+
+Before inspecting any further, let us see how DHCP works.
+The exchange of messages will be ass follows:
+  1. A new host is connected to the network: it send a DHCP Discovery broadcast packet using UDP on port 67 <br>
+  Since the host still needs an IP to be assigned, the source address of the packet is 0.0.0.0.
+
+  2. The DHCP server in the same broadcast domain responds with a DHCP offer packet composed as follows
+
+    |YIADDR    | 10.1.1.34         |
+    |----------|-------------------|
+    |Lease Time| 3600              |
+    |SRC IP    | 10.1.1.1          |
+    |DST IP    | 255.255.255.255   |
+    |MAC SRC   | Router_MAC        |
+    |MAC DST   | FF:FF:FF:FF:FF:FF |
+
+    Description:
+    - YIADDR : Your IP Address (Being offered by router)
+    - DST IP : Destination IP Address, which is still broadcast
+    - Lease Time (in second) : defines the validity period of the offered IP
+
+  3. The client responds with another broadcast packet: DHCP REQUEST <br>
+    The destination address is still broadcast since more than one DHCP server may have sent another DHCPOFFER.
+
+    The client uses 0.0.0.0 since it has not received a verification from the server
+
+    DHCP clients choose the best offer according to the lease time attribute in the DHCP offer: the longer the better. The packet is used to designate a winner between all the DHCP servers.
+
+  4. The DHCP server that recognizes that itself as the winner sends a DHCPACK packet in broadcast. The YIADDR contains the client IP address while the CHADDR (Client Ethernet Address) contains the client MAC address.
+
+
+All packets seen so far are sent in broadcast, thus everyone in the network receives the DHCP packets, even those hosts not involved in the communication.
+
+What happens if we are in the same broadcast domain and we act as rogue DHCP server?
+
+What we have to do is send our DHCPOFFER with a greater lease time. This lure the victim to choose our offer and then set configurations we will send.
+
+As you already know, DHCP Servers not only offer IP addresses but they can also provide a default gateway for the network. By competing with legit DHCP servers (and winning by increasing the lease time), we can set ourselves as the default gateway.
+
+In this way all the traffic leaving the network from the client host will reach our machine (attacker) and then the real gateway.
+
+#### 4.5.5. MitM in Public Key Exchange
+
+
+#### 4.5.6. LLMNR and NBT-NS Spoofing/Poisoning
 
 
 __________________________
