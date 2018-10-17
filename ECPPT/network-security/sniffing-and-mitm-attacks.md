@@ -439,9 +439,83 @@ As you already know, DHCP Servers not only offer IP addresses but they can also 
 In this way all the traffic leaving the network from the client host will reach our machine (attacker) and then the real gateway.
 
 #### 4.5.5. MitM in Public Key Exchange
+The following topic will be a bit theoretical, but contain great examples of what MitM attacks can accomplish.
 
+We will see how a man in the middle attack can be mounted to hijack the delivery of a public key into an asymmetric key encryption communication.
+
+Notice that this affects only the key exchange and not the authentication mechanism that may be implemented to defeat MitM, unless you are able to fake root CA's signatures.
+
+This is something that [Sotirov](http://www.win.tue.nl/hashclash/rogue-ca/) did through the MD5 collisions in 2009.
+
+First, you should be aware that asymmetric encryption is based on the encryption/decryption through 2 different keys.
+
+One is the private key and must be kept absolutely confidential. The other is the Public key and can be given to a Key distribution center that will make it available to anyone.
+
+If Alice wants a confidential conversation with Bob, she needs Bob's Public key.
+
+If Bob has not given Alice the key, there is no other way to start a confidential conversation than getting the public key from a key distribution server or from Bob himself through the internet.
+
+The steps Alice must take are:
+1. Alice queries the Key server for Bob's public key
+2. The Key Server returns Bob's public key to Alice
+3. Alice encrypts her message using Bob's public key and sends the message to Bob
+
+In the previous scenario, the MitM must be able to sniff traffic on Alice's network or on the Key Server network (through ARP poisoning or DHCP snooping, etc).
+
+Of course it is far easier that this attack to be performed on Alice's network, since Key Servers have enhanced security measures.
+
+In order for the attack to work, the Attacker (M) should be able to recognize the queries to the Key Server and take following steps to mount a successful MitM attack.
+
+  The MitM (attacker) should:
+  1. Intercept Alice's query and forward it to the Keys server
+  2. Intercept Bob's public key and store it for further use
+  3. Send his own Public key to Alice instead of Bob's public key
+  4. Alice would encrypt data using M's Public key thinking that she is using Bob's key
+  5. MitM would intercept Alice's encrypted messages, decrypting them with his private key and them forward them to Bob using Bob's public key saved at step 2)
 
 #### 4.5.6. LLMNR and NBT-NS Spoofing/Poisoning
+[LLMNR](https://en.wikipedia.org/wiki/Link-Local_Multicast_Name_Resolution) (Link-Local Multicast Name Resolution) and [NBT-NS](https://technet.microsoft.com/en-us/library/cc958811.aspx) (NetBIOS Name Service) spoofing are also 2 very effective methods for capturing user's NTLMv1, NTLMv2, or LM (LAN Manager) hashes, through a MitM attack.
+
+LLMNR is the successor of the NBT-NS, and was introduced into the Windows ecosystem starting with Windows Vista.
+
+Both LLMNR and NBT-NS allow for machines within Windows-based network to find one another and is essentially a "fall-back" protocol used for the resolution of hostnames within a network when resolving of hostnames via DNS fails.
+
+This process of hosts reverting to LLMNR or NBT-NS broadcast for host discovery results in NTLMv1/v2 hashes being sent over the network offering an attacker on the same network segment the opportunity to intercept, and replay the hashes to other systems, or alternatively, crack the intercepted hashes offline.
+
+A typical scenario of attacking LLMNR or NBT-NS broadcast is as follows (see diagram):
+  1. Host A request an SMB share at the system `\\intranet\files`, but instead of typing `intranet`, misatakenly types `intrnet`
+  2. Since `intrnet` can't be resolved by DNS as it is an unknown host, Host A then falls back to sending an LLMNR or NBT-NS broadcast message asking the LAN for the IP address for host `intrnet`
+  3. An attacker (Host B), responds to this broadcast message caliming to be the `intrnet` system
+  4. Host A complies and sends Host B (the attacker) their username and NTLMv1 and v2 hash to the attacker
+
+#### 4.5.6.1. Responder/Multirelay
+  [Responder](https://github.com/lgandx/Responder) is an excellent tool we can utilize for exploiting the LLMNT and NBT-NS weakness for capturing NTLMv1/v2 hashes and relaying them for authentication to other systems.
+
+  Responder works by listening for LLMNR or NBT-NS braodcast messages and spoofing responses to targeted hosts, resulting in intercepting hashes we can either pass (relay) to other systems, or crack offline.
+
+  We can use it conjunction with its "[MultiRelay](https://github.com/lgandx/Responder/blob/master/tools/MultiRelay.py)" tool, which will be responsible for relaying the hashes to other machines on the LAN, and can provide us with MultiRelay shell if successful.
+
+  Important:
+    It should be noted that one of the pre-requisites for this attack is that "SMB Signing" has been disabled on the workstations. For determining whether ornnot SMB Signing is enabled on a target, we can use RUnFinger.py tool which is also included with the Responder toolkit.
+
+    We simply specify the `-i` switch and our target:
+      ```
+      $ python RunFinger.py -i <target_IP>
+      ```
+  The steps for launching this attack are generally as follows:
+    1. Modify the Responder.conf configuration file and disable the "SMB" server and "HTTP" server options by setting the values to "Off"
+    2. Launch Responder.py with `-i` (interface) and additionally, using the `-lm` option can help with downgrading NTLMv1 or v2 to LM hashes where supported:
+      ```
+      $ python Responder.py -I eth0 --lm
+      ```
+    Responder should begin responding to LLMNR and NBT-NS requests at this point.
+
+    3. In another window, we launch the "MultiRelay.py" tool, found within the "tools" directory of the Responder package. We specify a target name with the `-t` switch, and we can use "ALL" value for the user switch with `-u`:
+      ```
+      $ python MultiRelay.py -t <target_IP> -u ALL
+      ```
+
+    A successful hash relay will result a MultiRelay "shell". From this hell we can use a number of its built-in options, or execute our own commands for furhtering our foothold.
 
 
 __________________________
