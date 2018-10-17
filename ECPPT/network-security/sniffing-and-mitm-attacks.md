@@ -517,9 +517,94 @@ A typical scenario of attacking LLMNR or NBT-NS broadcast is as follows (see dia
 
     A successful hash relay will result a MultiRelay "shell". From this hell we can use a number of its built-in options, or execute our own commands for furhtering our foothold.
 
-
 __________________________
 ## 4.6. Attacking Tools
+#### 4.6.1. Ethercap: Sniffing and MitM Attack
+Ethercap is an open source program that combines a packet sniffer for different protocols (POP/HTTP/HTTPS/SFTP), but it also offers password cracking features.
+
+Steps:
+1. In order to start Ettercap, let us run the following command in out terminal:<br>
+  ```
+  sudo ettercap -G
+  ```
+  The `-G` options instructs Ettercap to use GTK+ GUI, in other words, it instructs Ettercap to start the graphical interface.
+
+2. Select the interface to use and the sniffing option <br>
+  We can choose between:
+  - Unified : it sniffs all the packets on the cable
+  - Bridged : it uses 2 network interfaces and forwards the traffic one to the other
+
+3. Once we select the sniffing option (unified in our case), a new window appears <br>
+  Here we have to select the interface to use.
+  In our case we will select the `tap0` interface and click `OK`.
+  Once we confirm, the options and the interface will change.
+
+4. Right now Ettercap is sniffing the traffic on the network. You can see the connection intercepted by clicking on `View` and then select `Connections`
+
+5. The first step once we run Ettercap is to scan the network in order to find alive hosts
+
+  This is the easiest step, but may take a while depending on how your network is set up. To do this let us click on `Hosts` and then `Scan for hosts`.
+
+  It will go through its automatic scanning steps while showing you its progress.
+
+6. Once it is done, we can see the results by clicking on `Host list` in the `Host` menu
+
+From here we can select which of these hosts will be the targets of our attack. We just need to select them and then click on `Add target 1` and `Add target 2`
+
+  While you can pick as many hosts as you like, remember that your system will be processing the traffic from the hosts you select. In other words, be sure to not to select too many hosts or everything will come to a standstill.
+
+  Try 2 or 3 targets at the beginning and add additional from there if you wish.
+
+  Supposing we want to intercept only the traffic of a specific host, we will add the target host and the router in the list.
+
+  Therefore, if we want to run our attack on the host with IP address 172.16.5.15, we will select the targets as follow:
+    ```
+    Add to target 1: 172.16.5.15  | or | Add to target 1: 172.16.5.1
+    Add to target 2: 172.16.5.1   |    | Add to target 2: 172.16.5.15
+    ```
+
+  Important:
+    Please note that if you do not select a target, Ettercap will automatically set ANY (all the hosts) in the target list.
+
+    As you can imagine, this will force your system to process a lot of traffic. Be sure your network and your machine can handle this amount of traffic, otherwise you may DoS your network.
+
+Once we set the targets, we can select the type of attack to run. To do so let us click on the MitM in the top bar and choose among one of the following attacks:
+  - ARP poisoning
+  - ICMP redirect
+  - Port stealing
+  - DHCP spoofing
+
+  For our first test we will select `ARP Poisoning`. Once we click on it, a pop-up window appears and we can select some options for the attack. For now let us enable the `Sniff remote connections` option and click OK.
+
+  The ARP poisoning attack automatically starts and we should now be able to intercept the traffic of our target machine.
+
+    To verify that the attack is working, let us first check our (the attacker) physical address.
+
+    Then check the ARP table of the target machine (by running `arp -a`).
+      It will show the MAC address(es) difference before and after the attack.
+
+  Now that we know that the attack is working, let us click on `View->Connections` in order to inspect the traffic intercepted. As we can see, here is all the traffic generated from the target machine.
+
+  In order to inspect the packets, we can double click on a connection listed in the previous view. A new tab appears, showing the details and the data transmitted.
+
+  Ettercap will also automatically tries to intercept credentials sent via the network. Indeed we can see it was able to automatically gather the username and the password sent by the target host to the FTP server.
+
+It is important to know that with the current configuration we can use other sniffing tools at the same time. For example, we can start Wireshark to sniff the `tap0` traffic.
+
+You need to also know that some traffics are encrypted (i.e. SSL), but we can configure Ettercap later on in order to intercept and decrypt this traffic, but also what pitfalls and limits we may face.
+
+
+
+#### 4.6.2. Cain&Abel: Sniffing and MitM Attacks
+
+
+#### 4.6.3. Macof
+
+
+#### 4.6.4. Arpspoof
+
+
+#### 4.6.5. Bettercap
 
 
 __________________________
