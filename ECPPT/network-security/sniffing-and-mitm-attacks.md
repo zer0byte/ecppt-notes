@@ -986,7 +986,45 @@ Many MitM tools started implementing *sslstip+* in order to bypass HSTS. The one
 Before seeing the tool in action, let us get a better idea of how the attack works:
   In addition to the modified version of *sslstip*, we now need to run a DNS server too. In this way, we will be able to intercept and edit the victim's DNS requests, and bypass HSTS.
 
+The following summarizes the attack in action:
+1. The victim goes to *google.com* (not in the HSTS preload list)
+2. We (attacker) intercept the traffic and change the links in the web page.  
+    For example, we change *accounts.google.com* to *acccount.google.com* (notice three 'ccc')
+3. The victim makes a DNS request for that domain *acccount.google.com*
+4. We intercept the request, forward the real DNS request and respond to the victim with a fake domain and the IP address
 
+  The victim web browser will now search if the domain should be accessed securely (HTTPS). This can be done by checking the HSTS preloaded list or by checking if the domain has already been visited, and then has the HSTS header already set (not expired)
+
+  Since the domain is different (it is *acccounts* with three 'c') the browser will continue the communication via HTTP.
+
+If you want to know more about how the attack works, we suggest you watch the Black Hat 2014 talk [here](https://www.youtube.com/watch?v=Q3siIqS9LVA)
+
+Now that you know how the attack works, let us see how tools such as MITMf implements it and are able to bypass the HSTS security feature.   
+
+  Once you install the tool, be sure to check the manual by running the `python mitmf.py -h` command (see image).
+
+  As you will see from the output, the tool offers a lot of options and plugins that allow you to highly configure your attacks. The options and plugins that we are going to use for our test are the following:
+  - `-i`        Interface to listen on
+  - `--spoof`   Load plugin 'Spoof' - This allows to redirect traffic using ARP, ICMP, DHCP, or DNS spoofing
+  - `--arp`     Redirect traffic using ARP spoofing
+  - `--dns`     Proxy/Modify DNS queries
+  - `--hsts`    Load plugin 'SSLstrip+'
+  - `--gateway` Specify the gateway IP
+  - `--targets` Specify host/s to poison (if ommited, default to subnet)
+
+Example:
+  In this scenario, the target IP address is *192.168.102.149*, while the gateway IP address is *192.168.102.2*.
+
+  In order to run our attack, our command will look like the following one:
+    ```
+    python mitmf.py -i eth0 --spoof --arp --dns --hsts --gateway 192.168.102.2 --targets 192.168.102.149
+    ```
+
+  Now that the attack is working in the background, we can try to log into Google Services from our victim machine. We will use Internet Explorer in the first test. (See output on image)
+
+  The following is what we are able to sniff while trying to log into Google Services. We can see we are able to get the victim username (email) and password. (See image)
+
+  The following, instead, is the output that we obtain using Google Chrome on the victim. As you can see, the tool tries to change the domain name and uses *wwww* instead of *www*.
 
 
 __________________________
