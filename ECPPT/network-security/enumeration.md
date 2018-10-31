@@ -47,24 +47,25 @@ PC's on a NetBIOS LAN communicate either by establishing a session (TCP) or by u
   In order to locate a resource, a NetBIOS Name Query is used to resolve the NetBIOS name to an IP address. A name is composed of 16 characters: the firsts 15 characters can be specified by the user, while the 16th character is used to indicate the resource type and goes from 00 to FF (Hex).
 
   Name types available: [More](https://msdn.microsoft.com/en-us/library/cc224454.aspx)
-  |       Name      |       Service/Type      |
-  |-----------------|-------------------------|
-  |[computer_name]00|Workstation Service      |
-  |[computer_name]03|Messenger Service        |
-  |[computer_name]06|RAS Server Service       |
-  |[computer_name]1F|NetDDE Service           |
-  |[computer_name]20|Server Service           |
-  |[computer_name]21|RAS Client Service       |
-  |[computer_name]BE|Network Monitor Agent    |
-  |[computer_name]BF|Network Monitor App.     |
-  |[user_name]03    |Messegner Service        |
-  |[domain_name]1D  |Master Browser           |
-  |[domain_name]1B  |Domain Master Browser    |
-  |[domain_name]00  |Domain Name              |
-  |[domain_name]1C  |Domain Control           |
-  |[domain_name]1E  |Browser Service Elections|
-  |__MSBROWSE__     |Master Browser           |
-
+    ```
+    |       Name      |       Service/Type      |
+    |-----------------|-------------------------|
+    |[computer_name]00|Workstation Service      |
+    |[computer_name]03|Messenger Service        |
+    |[computer_name]06|RAS Server Service       |
+    |[computer_name]1F|NetDDE Service           |
+    |[computer_name]20|Server Service           |
+    |[computer_name]21|RAS Client Service       |
+    |[computer_name]BE|Network Monitor Agent    |
+    |[computer_name]BF|Network Monitor App.     |
+    |[user_name]03    |Messegner Service        |
+    |[domain_name]1D  |Master Browser           |
+    |[domain_name]1B  |Domain Master Browser    |
+    |[domain_name]00  |Domain Name              |
+    |[domain_name]1C  |Domain Control           |
+    |[domain_name]1E  |Browser Service Elections|
+    |__MSBROWSE__     |Master Browser           |
+    ```
   You can run the following command to show the NetBIOS names on our machine:
   ```
   nbstat -n
