@@ -93,7 +93,7 @@ There are several tools that are essential to network enumeration:
   - `--traceroute` : Trace hop path to each host
 
   [Scanning techniques](https://nmap.org/book/man-port-scanning-techniques.html) (Get information about open/closed/filtered ports):
-  - `-sS/sT/sA/sW/sM`: TCP STN/Connect()/ACK/Window/Maimon scans
+  - `-sS/sT/sA/sW/sM`: TCP SYN/Connect()/ACK/Window/Maimon scans
   - `-sU`: UDP Scan
   - `-sN/sF/sX`: CP Null, FIN, and Xmas scans
   - `--scanflags <flags>`: Customize TCP scan flags
@@ -211,7 +211,7 @@ There are several tools that are essential to network enumeration:
 
       If we inspect the traffic with Wireshark, we will not see any communication between the target host and out original IP addresses!
 
-      You can see a detailed list of every packet sent and received with nmamp by using the `--packet-trace` option
+      You can see a detailed list of every packet sent and received with nmap by using the `--packet-trace` option
 
   - Never do DNS resolution `-n`
     This is an additional flag we can add to our nmap scans to increase our scan times, and also help us stay a bit more "under the radar", as reverse DNS lookups can generate more noise than necessary.
@@ -292,10 +292,8 @@ There are several tools that are essential to network enumeration:
       Description:
       - `-r` tells the tool to display ID increments instead of the actual ID
       - `-p` sets the destination port
-      -
-
-      The `-r` option allows us to see the relative IP field, therefore, if the IP ID increases by 1, it can be considered a viable candidate.
-      We can never be 100% sure because:
+        The `-r` option allows us to see the relative IP field, therefore, if the IP ID increases by 1, it can be considered a viable candidate.
+        We can never be 100% sure because:
       - We have to validate if it is a global or local increase
       - Some hosts increase IP ID on a per host basis
 
