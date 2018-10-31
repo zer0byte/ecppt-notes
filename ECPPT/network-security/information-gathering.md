@@ -391,7 +391,7 @@ In order to collect the highest number of domains and subdomains related to the 
   ```
   or
   ```
-  nslookup domainname.com MX
+  dig domainname.com MX
   ```
 
 - Zone Transfers<br>
@@ -445,7 +445,7 @@ Steps:
 
   The first technique to try is a reverse lookup. The second is asking Google or Bing.
 
-  Bing offers a query filter that returns all the websites hosted on a given IP address. We just need to use the `ip` filter, followed by the IP address of our target, e.g.:`ip: 199.193.116.231`.
+  `Bing` offers a query filter that returns all the websites hosted on a given IP address. We just need to use the `ip` filter, followed by the IP address of our target, e.g.:`ip: 199.193.116.231`.
 
   Other tools:
   - [Domain-neighbors](http://www.tcpiputils.com/domain-neighbors)
