@@ -429,6 +429,281 @@ This also will be dealt with in-depth in the HMTL5 module.
 
 ___________________________________
 ## 1.4. Cookies
+HTTP itself is a stateless protocol. This means that a website cannot retain the state of your visit between different HTTP requests without mechanisms such as sessions or cookies. To that server, each visit, without a session or a cookie, looks like a new user.
+
+To overcome this limitation, in 1994, sessions and cookie were invented. Netscape, a leading company at that time, invented cookies to essentially make HTTP stateful.
+
+Cookies are textual information installed by a website into the "cookie jar" of the web browser. The cookie jar is the storage space where a web browser stores cookies.
+They are fragments of text containing variables in the form of `name=value`
+
+A server can set a cookie via the `Set-Cookie` HTTP header field in a response message. A cookie has a predefined format. It contains the following fields:
+- Domain <br>
+  A website can only set sets a cookie for the domain: `google.com` or `.google.com`.
+  This means that the browser will install the cookie in the cookie jar and will send this cookie for any subsequent request to `google.com`, `www.google.com`, and `maps.google.com`.
+
+  The scope of this cookie will be `*.google.com`.
+  Domain A cannot set a cookie for domain B.
+  The browser will send A's cookie in accordance with the above domain scope (to A and all of its subdomains), including the path and the expiration date.
+  There are 2 important considerations about the domain field:
+  - A leading `.`, if present, is ignored
+  - If the **server does not specify** the domain attribute, the browser will automatically set the domain das the server domain and set the cookie's **host-only** flag. This means that the cookie will be sent **only to that precise hostname**
+- Expires <br>
+  Expires give the cookie a time constraint.
+  The cookie will only be sent to the server if it has not expired.
+  Session cookies expire when the session exists.
+- Path <br>
+  The cookie Path field specifies for which requests, within that domain, the browser need to send the cookie.
+  For cookies with path=`/downloads`, all subsequent requests to:
+  - `/downloads`
+  - `/downloads/foo`
+  - `/downloads/foo/bar`
+  will include this cookie.
+  The browser will not send this cookie for requests to `/blog` or `/members`
+- Content <br>
+  A cookie can carry a number of values at once. A sever can set multiple values with a single `Set-Cookie` header by specifying multiple `KEY=Value` pairs.
+
+  For example:
+  `Set-Cookie: Username="john"; Authenticated="1"`
+- HTTP Only Flag <br>
+  The HTTPOnly Flag is used to force the browser to send the cookie only through HTTP.
+  The flag prevents the cookie from being read via JavaScript, Flash, Java, or any other non-HTML technology. This is a protection mechanism against cookie stealing via XSS.
+  You will see how to exploit XSS vulnerabilities later on.
+
+- Secure Flag <br>
+  The Secure flag forces the browser to send the cookie only through HTTPS (SSL).
+  This prevents the cookie from being sent in clear text.
+
+#### 1.4.1. Cookies Domain
+The `domain` attribute represents the domain value for which the cookie is valid.
+Together with the `path`, `secure`, and `expires` attributes, it is useful during the process in determining if a cookie must be submitted along with a new HTTP request.
+[RFC6265](http://tools.ietf.org/html/rfc6265) distinguishes cookies set with a specified domain value from cookies without.
+
+An important difference in the older RFC is the leading dot at the start of the domain value string. As opposed to the previous RFC, the leading dot (`.`) has no particular significance; the browser does not care about it.
+
+For example, this means that a browser will handle cookies with these domain values:
+- `.elsptp.site`
+- `elsptp.site`
+
+Let's examine the following different cookie domain settings.
+We will see when and how the cookie will be sent.
+###### 1.4.1.1. Specified Cookie Domain
+A cookie with a domain value specified will be sent by the browser when one of the following conditions occurs:
+1. Cookie domain value = target domain <br>
+  Suppose that the cookie domain value is `els.ptp.site` and that the target domain requested by the browser is `els.ptp.site` (it is the same).
+  If we request the following page: http://els.ptp.site/index.php the cookie will be sent.
+2. Cookie domain value is different from the target domain AND Cookie domain value is a suffix of the target domain <br>
+  Suppose that the cookie domain value is `ptp.site` and that the target domain requested by the browser is `els.ptp.site`. For example, we are requesting the page http://els.ptp.site/index.php
+
+  The cookie will be sent because the string `ptp.site` represents a suffix of the string `els.ptp.site`.
+
+  Let us see some examples. A page on the target domain `elsptp.site` sets a cookie with domain value `elsptp.site`. The browser will send this cookie in HTTP request matching the following URLs:
+  - `http[s]://elsptp.site/*`
+  - `http[s]://www.elsptp.site/*`
+  - `http[s]://www.lab.elsptp.site/*`
+  - `http[s]://*.elsptp.site/*`
+
+**Security Implications**
+A page on the target domain `*.elsptp.site` can set a cookie with domain value `elsptp.site`.
+Example:
+  A page on the target domain `a.b.elsptp.site` sets a cookie with domain value `elsptp.site`. The browser will send this cookie in requests matching the following URLs:`http[s]://*.elsptp.site`/*
+
+A page on the target domain `elsptp.site` cannot set a cookie with domain value `*.elsptp.site`.
+Example:
+  A page on the target domain `elsptp.site` cannot set a cookie with domain value `a.elsptp.site`
+
+This means that lower-level subdomains can set cookies for higher domains. So, `b.a.elsptp.site` can set a cookie for `a.elsptp.site` or `elsptp.site`.
+
+On the reverse side, higher domains cannot set cookies for lower-level subdomains. Meaning, `elsptp.site` cannot set cookies for `anysubdomain.elsptp.site`.
+
+###### 1.4.1.2. Unspecified Cookie Domain
+When a cookie does not contain a domain value, it is assumed that the **host-only-flag** is set to true. A cookie with the host-only-flag will be sent only to the target domain that set it.
+
+Note that the RFC uses the term *host* instead of *domain*
+
+If a page on the target domain `elsptp.site` sets a cookie without the domain value, the browser will send this cookie only in HTTP requests that exactly match the following URLs `http[s]://elsptp.site/*`
+
+###### 1.4.1.3. Internet Explorer Exception
+Internet Explorer does not distinguish between cookies with a specified domain value and ones with unspecified values.
+Cookies with unspecified domain values will be interpreted by the browser as if they had a domain value corresponding to the target domain set in it.
+Let's look at an example.
+
+A page on the target domain `elsptp.site` sets a cookie without a domain value. IE differs from other browsers, and will consider sending this cookie as if its domain value was set to `elsptp.site` therefore, it will send this cookie in HTTP requests that match the following URLs:
+- `http[s]://elsptp.site/*`
+- `http[s]://www.elsptp.site/*`
+- `http[s]://www.lab.elsptp.site/*`
+- `http[s]://*.elsptp.site/*`
+
+#### 1.4.2. Inspecting the Cookie Protocol
+This following section will depict the process of cookie installation within a web browser.
+This example, although pretty simplistic, should finally shed some light on how cookies are handled.
+
+###### Login
+A login page is a great place for a session to begin and also a good point at which cookie is installed in your browser.
+  ```
+  POST /login.php
+  Host: www.google.com
+
+  usr=John&Pass=mypass
+  ```
+
+###### Set-Cookie
+The website responds with a Set-Cookie response header. This header contains the cookie to be installed in the browser and to be included in all subsequent requests to `www.google.com`
+  ```
+  HTTP /1.1 200 OK
+  ...
+  Set-Cookie: domain=google.com; path=/; expires=espires=Mon; 16-Apr-2013 19:03:22 GMT; authenticated='1'; httpOnly; secure;
+  <PAGE CONTENT>
+  ```
+
+###### Cookie
+For every subsequent request, the browsers will consider: `Domain scope`, `Path`, `Exception`, `Flags`. If all the above checks out, a cookie header that contains the cookie will be inserted into the Request header.
+  ```
+  GET /mail.php
+  Host: www.google.com
+  Cookir=authenticated="1";
+  ```
+
+#### 1.4.3. Cookie Installation
+Let's see some examples where the browser accepts cookies sent by the web server and some others where the cookies are rejected.
+
+###### 1.4.3.1. Correct Cookie Installation
+###### Example 1
+The browser request a page from the target domain `a.elsptp.site` and the web server sends a response, including a cookie without a domain value.
+
+Let's see how this works in the next slide. (see img-139-141)
+  ```
+  Web Browser                                                     a.elsptp.site
+       |----------- POST (http://a.elsptp.site/login.php) -------->| The browser request a page from the target domain
+       |                                                           |
+       |<---------- HTTP RESPONSE HEADER:     ---------------------| The web server send a response including a cookie without a domain value
+       |            ...                                            |
+       |            Set-Cookie: SESSID=d8a4z21                     |
+       |            Path=/                                         |
+       |                                                           |
+       |----------- GET (http://a.elsptp.site/logout.php) -------->| The cookie accepted will be available only to the target domain a.elsptp.site since the domain value was not specified.
+       |            HTTPS Request Header:                          |
+       |            ...                                            |
+       |            Cookie SESSID:=d8a4z21                         |
+  ```
+
+This cookie will be sent in each HTTP request matching the following URLs:
+- http://a.elsptp.site/*
+- https://a.elsptp.site/*
+
+###### Example 2
+The browser requests a page on the target domain `a.elsptp.site` and the web server sends a response including both a cookie with the domain value `.elsptp.site` and the path value `/`.
+  ```
+  Web Browser                                                     a.elsptp.site
+       |----------- POST (http://a.elsptp.site/login.php) -------->| The browser request a page from the target domain
+       |                                                           |
+       |<---------- HTTP RESPONSE HEADER:     ---------------------| The web server sends a response with the domain value .elsptp.site and the path value /
+       |            ...                                            |
+       |            Set-Cookie: SESSID=d8a4z21                     |
+       |            domain: .elsptp.site;                          |
+       |            Path=/                                         |
+  ```
+
+  The cookie is accepted because the domain value `.elsptp.site` is a suffix of the domain emitting the cookie, `a.elsptp.site`, therefore it will be accepted and sent in each request matching the following URLs:
+  - `http://elsptp.site/*`
+  - `http://*.elsptp.site/*`
+  - `https://elsptp.site/*`
+  - `https://*.elsptp.site/*`
+
+This is what will happen. The cookie previously set is sent to both **a** and **b** subdomains
+  ```
+    Web Browser                                                a.elsptp.site
+          |----------- GET (http://a.elsptp.site/page1.php) -------->|
+          |            HTTPS Request Header:                         |
+          |            ...                                           |
+          |            Cookie SESSID:=d8a4z21                        |
+          |                                                    b.elsptp.site
+          |----------- GET (http://b.elsptp.site/page1.php) -------->|
+          |            HTTPS Request Header:                         |
+          |            ...                                           |
+          |            Cookie SESSID:=d8a4z21                        |
+  ```
+
+####### Example 3
+Now you close your web browser and open a new page on the same site.
+The browser requests a page from the target domain `a.elsptp.site` and the web server sends a response including both a cookie without a domain value and the path of `/learning`.
+  ```
+  Web Browser                                                     a.elsptp.site
+       |----------- POST (http://a.elsptp.site/login.php) -------->| The browser request a page from the target domain
+       |                                                           |
+       |<---------- HTTP RESPONSE HEADER:     ---------------------| The web server sends a response without a domain value and the path value /learning
+       |            ...                                            |
+       |            Set-Cookie: SESSID=d8a4z21                     |
+       |            Path=/learning                                 |
+  ```
+
+  The cookie is accepted and will be available only to the target domain `a.elsptp.site` and path `/learning/*`.
+  So this cookei will be sent in each request matching the following URLs:
+  - `http://a.elsptp.site/learning/*`
+  - `https://a.elsptp.site/learning`
+
+  This is what will happen. The cookie will be sent for resources in the `/learning/` path.
+  ```
+                                                               a.elsptp.site
+    Web Browser                                                  page1.php
+          |----------- GET (http://a.elsptp.site/page1.php) -------->|
+          |            HTTPS Request Header:                         |
+          |            ...                                           |
+          |            <NO COOKIE>                                   |
+          |                                                    learning/lab.php
+          |----------- GET (http://a.elsptp.site/learning/lab.php) ->|
+          |            HTTPS Request Header:                         |
+          |            ...                                           |
+          |            Cookie SESSID:=d8a4z21                        |
+  ```
+
+###### Example 4
+After that, the browser request a second page from the target domain `elsptp.site` and the web server ends a response including a cookie with the name `SESSID`, value `B`, and without domain value.
+  ```
+  Web Browser                                                     a.elsptp.site
+       |----------- POST (http://a.elsptp.site/login.php) -------->| The browser request a page from the target domain
+       |                                                           |
+       |<---------- HTTP RESPONSE HEADER:     ---------------------| The web server sends a response with the name SESSID, value B, and without domain value
+       |            ...                                            |
+       |            Set-Cookie: SESSID=B                           |
+       |            Path=/                                         |
+  ```
+
+Both cookies will be accepted and stored by the browser.
+They will not interfere with one another as they are 2 different cookies.
+  ```
+                                                               a.elsptp.site
+    Web Browser                                                  page1.php
+          |----------- GET (http://a.elsptp.site/page1.php) -------->|
+          |            HTTPS Request Header:                         |
+          |            Domain:= .elsptp.site  ;                      |
+          |            ...                                           |
+          |            COOKIE SESSID:=A                              |
+          |                                                      elsptp.site
+          |                                                       lab.php
+          |----------- GET (http://elsptp.site/lab.php) ------------>|
+          |            HTTPS Request Header:                         |
+          |            ...                                           |
+          |            Cookie SESSID:=B                              |
+  ```
+
+###### 1.4.3.2. Incorrect Cookie Installation
+Now let's see some examples where the cookie sent by the web server is not accepted by the browser.
+The browser requests a page from the target domain `a.elsptp.site` and the web server sends a response including a cookie with domain value `b.elsptp.site`.
+  ```
+  Web Browser                                                     a.elsptp.site
+       |----------- POST (http://a.elsptp.site/login.php) -------->| The browser request a page from the target domain
+       |                                                           |
+       |<---------- HTTP RESPONSE HEADER:     ---------------------| The web server send a response including a cookie with the domain b.elsptp.test
+       |            ...                                            |
+       |            Set-Cookie: SESSID=d8a4z21;                    |
+       |            domain:= b.elsptp.test ;                       |
+       |            Path=/                                         |
+       |                                                           |
+       |----------- GET (http://a.elsptp.site/logout.php) -------->| The cookie is not accepted because the domain b.elsptp.test is not a suffix of the domain a.elsptp.site that sent the cookie
+       |            HTTPS Request Header:                          |
+       |            ...                                            |
+       |            <NO COOKIE>                                    |
+  ```
 
 
 ___________________________________
