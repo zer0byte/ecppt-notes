@@ -705,10 +705,144 @@ The browser requests a page from the target domain `a.elsptp.site` and the web s
        |            <NO COOKIE>                                    |
   ```
 
-
 ___________________________________
 ## 1.5. Session
+Sometimes the web developer prefers to store information on the server side instead on the client side.
+This happens in order to hide the application logic or just to avoid back and forth data transmission, which is the typical behavior cookies.
+HTTP session are a simple mechanism that allows websites to store variables, specific for a given visit, on the server side.
+Each user session is identified by either a session id or token, which the server assigns to the client.
 
+The main difference between cookies and session variables is that cookies are stored on the client, whereas session variables are stored on the server.
+Also, session variables expire with the session and sessions usually expire sooner than cookies do.
+
+The session mechanism works through the use of a session token (or **session ID**):
+- The session ID is assigned to the client by the web server
+- The client will present this ID for each subsequent request in order to be recognized
+
+The session ID provided by the client will let the server retrieve both the state of the client and all of its associated variables.
+You can picture the session ID like primary key in a relational database where clients' variables are stored.
+Session IDs can be stored within text files, databases, or memory on the server.
+
+Session cookies contain a single parameter formatted in a key-value pair:
+- `SESSION=0wvCtOBWDH8w`
+- `PHPSESSID=13Kn5Z6Uo4pH`
+- `JSESSIONID=W7DPUBgh7kTM`
+
+Each development language has its own default session parameter name and typically allow for developers to customize its functionality (ie: Changing `PHPSESSID` to `PSESSID`).
+  Websites running PHP, typically install session cookies by using the `PHPSESSID` parameter name, while JSP websites typically use `JSESSIONID`.
+
+Steps:
+  If needed, servers can install session cookies after a browser performs some type of activity, such as:
+  - Opening a specific page
+  - Changing settings in the web applications
+  - Logging in
+
+  Then the browser uses the cookie in subsequent requests.
+    A session could maintain many variables, so sending a small cookie keeps the bandwidth usage low.
+
+In the following example you can see a session cookie in action:
+1. The client uses a login form to PORT the user's credentials
+2. The server sends back a response with a Set-cookie header field.
+    The cookie contains the `session ID`
+3. The browser will send back the cookie according to the protocol, thus sending the `session ID`
+
+Since the web browser has a cookie in its jar, any subsequent request will carry the (session) cookie with it.
+As an alternative to session cookies, session IDs can also be sent via GET method appended to the requesting URL:
+  ```
+  http://example.site/resource.php?sessid=k27rds7h8w
+  ```
+
+In the following video you will see how the cookie protocol works:
+- Installation of cookies
+- Manipulation of cookies
+- Dissecting cookies
+
+Moreover you will see how HTTP sessions work and how they use cookies. (see vid-180)
 
 ___________________________________
 ## 1.6. Web Application Proxies
+Most web applications contains a great deal of objects like scripts, images, style sheets, client, and server side intelligence.
+Having tools that help in the study and analysis of web application behavior is critical.
+
+An intercepting proxy is a tool that lets you analyze and modify any request any response exchanged between an HTTP client and a server.
+By intercepting HTTP messages a pentester can study a web application behavior and manually test for vulnerabilities.
+
+The most common web application proxies are:
+- [Burp Suite](http://portswigger.net/burp/) (the intercepting proxy feature)
+- [ZAP](https://www.owasp.org/index.php/OWASP_Zed_Attack_Proxy_Project)
+
+Proxies are fundamental while analyzing web applications and will become your best friends for web-app testing.
+
+**Do not confuse intercepting proxies with common web proxy servers like [Squid](http://www.squid-cache.org/).**
+
+Proxy servers have different purposes:
+- Bandwidth optimization
+- Content filtering
+- and more
+
+#### 1.6.1. Burp Suite
+Burp suite offers one of the best proxies available.
+You can download the Free Edition [here](http://portswigger.net/burp/download.html), or it comes standard in Kali.
+
+Burp suite will let you:
+- Intercept requests and responses between your browser and the web server
+- Build requests manually
+- Crawl a website, by automatically visiting every page in a website
+- Fuzz web applications, by sending patterns of valid and invalid inputs to test their behavior.
+
+By using Burp Suite, you can intercept and modify requests coming from your browsers before they are sent to the remote server.
+
+You can modify the header and the body of a message either by hand or, automatically.
+
+In the following section, you will see how to launch, configure and use Burp Suite with you browser. If you want to run it on another OS, you can download it from [Portswigger website](http://portswigger.net/Burp/downloadfree.html):
+
+  1. To run Burp you can double click on the jar file you downloaded and run
+    ```
+    java -jar burupusuite_free_v1.6.jar
+    ```
+  from the console.
+
+  2. Now go to the Proxy tab and then to the Options sub-tab.(see img-193-194)
+  Here you can start and stop the proxy and configure the `host:port` pair that burp will listen.
+  Scrolling down you can find other configuration items to fine tune which messages to intercept, how to automatically change message content, and more.
+  For now, just leave the default options as they are, you will see how to use those features later on.
+
+  3. Once Burp Proxy is configured, you have to configure your browser to use it as proxy for every protocol.
+    In Firefox, you have to open the *Preferences* window, go to the advanced tab, click on the *Network* sub-tab and finally open *Connection settings* window.
+
+  4. To intercept traffic, switch to Burp and go to *Proxy > Intercept* and click on the *Intercept is off* button to enable interception (see img-198).
+
+  5. Now open a website with your browser. (see img-199-201)
+    Burp will intercept all requests and you can optionally, modify, and then forward them by clicking on *Forward*.
+    When *Intercept* is on, every browser request is stopped by the Burp Proxy.
+    You can modify the entire request or just its headers.
+
+    You can modify the headers both in the *Raw* tab or in the *Headers* tab.
+    **Remember to forward the request after editing it**.
+    **Raw** and **Headers** tab present the very same information in a different format. The **Headers** tab simply presents the headers in tabular format.
+
+You do not need to manually intercept and forward e very request though.
+Even if you leave the master interception off, Burp will still collect information on the HTTP traffic coming to and from your browser.
+You can check what Burp has collected in 2 ways:
+- on the *Proxy > History* tab (see img-204)
+- in the *Target > Site Map* tab (see img-205)
+
+###### Burp Repeater
+Another feature is **Burp Repeater** which lets you manually build raw HTTP requests.
+
+You can do the same thing by using other tools such as `netcat` or `telnet`, but Burp provides you:
+- Syntax highlighting
+- Raw and rendered response
+- Integration with other Burp tools
+
+Steps: (see img-207-215)
+1. To create a request, first you have to set your target by clicking on the pencil icon in the upper right corner of the tab
+2. Then you can set your target host and port
+3. You can define your request by using this text area. Every request must have at least an **HTTP VERB** (GET, POST), a **HOST** header, and **2 empty lines** after the headers.
+4. When your request is complete, you can click the **Go** button to send it to the server. Burp will display the response in the **Response** panel
+
+An easier method to build requests is to intercept a browser request with the proxy and send it to the Repeater function. You can do that with the **CTRL+R** shortcut or by right clicking in the request body and selecting **Send to repeater**
+
+In the following 2 videos, you will learn how to define the target scope in Burp and OWASP ZAP, and how to configure the Proxy to intercept only the traffic in scope.
+Moreover you will see how to configure and use other features of both Burp and ZAP. This will help you reach the penetration testing engagement goals.
+(see vid-217)
