@@ -265,8 +265,153 @@ For the version info, we can use Netcraft; it provides web server analysis via i
 
   The Netcraft site report also shows the webserver and historical OS information about the domain microsoft.com.
 
+  We searched for domain info on microsoft.com and Netcraft responded with a Web Server version *Microsoft-IIS/8.5*.
 
+  We are also given a list of the web servers and IP addresses.
+  Microsoft uses a server farm and the HTTP request may be routed to different web servers based on load and availability at the moment we visit.
 
+    This is not to confuse us, but it must be taken into account when we perform our web application tests.
+
+    It is not uncommon to find corporations or even small businesses using load balancers that route HTTP request to different servers that may even run different web servers versions.
+
+    The advice here is to take note of all web servers version-to-IP couplets for further use.
+
+    The Nameserver is the DNS server that replies to all lookup queries regarding the namespace of a domain. An `nslookup` query for microsoft.com involves a request to ns1.msft.net for example:
+      ```
+      C:\>nslookup -type=NS microsoft
+      Server:   google-public-dns-a.google.com
+      Address:  8.8.8.8
+
+      Non-authoritative answer:
+      microsoft.com   nameserver = ns3.msft.net
+      microsoft.com   nameserver = ns4.msft.net
+      microsoft.com   nameserver = ns1.msft.net
+      microsoft.com   nameserver = ns2.msft.net
+      ```
+
+In addition to the web server version, IP addresses, and nameservers, netcraft provides the following information we can capture:
+- Server version
+- Uptime stats
+- IP address owner
+- Host provider
+
+Sometimes netcraft does not provide us with enough information regarding our target web server version.
+In addition, there are cases where netcraft cannot be used, such as with Internal Web Servers that are not attached to the Internet.
+
+When this is the case we can use manual testing techniques and tools to identify a server such as `netcat`, `httprint`, [whatweb][https://github.com/urbanadventurer/WhatWeb], and [wappalyzer](https://wappalyzer.com/).
+
+  Some of these freely available tools rely on common web server characteristics in order to accurately identify them.
+
+  They probe the web server with a series of requests and compare the responses to their database of signatures in order to both find a match, and accurately guess the following information:
+  - Web server version
+  - Installed modules
+  - Web enabled devices (routers, cable modems, etc.)
+
+  The most important feature of these tools is that they do not solely rely on the service banner.
+
+  They are capable of fingerprinting the web server version even when the banner of the HTTP response header has been manually obfuscated/altered using security modules ([mod_security](https://www.modsecurity.org/))
+
+###### 2.2.1.1. netcat
+The first one we want to use for manual fingerprinting is `netcat`.
+This is a simple utility that reads and writes data across network connections.
+
+By using `netcat`, we can establish a connection to the Web Server and look at the Server field in the HTTP response header.
+
+The following is an example of what we can get by using `nc` (netcat) against a Web Server that resides in our network:
+  ```
+  root@kali:~# nc 192.168.102.136 80
+  HEAD / HTTP/1.0
+
+  HTTP/1.1 200 OK
+  Date: Mon, 30 Mar 2015 14:40:06 GMT
+  Server: Apache/2.2.22 (Debian)                  // The server is Apache
+  Last-Modified: Thu, 05 Feb 2015 21:12:05 GMT
+  ETag: "1847cb-b1-50e5dc184b340"
+  Accept-Ranges: bytes
+  Content-Length: 177
+  Vary: Accept-Encoding
+  Connection: close
+  Content-Type: text/html
+  ```
+
+Here is another Web Server address. As you can see, the field order changes as well as their values:
+  ```
+  root@kali:~# nc 134.170.185.46 80
+  HEAD / HTTP/1.0
+
+  HTTP/1.1 301 Moved Permanently
+  Cache-Control: private
+  Content-Length: 177
+  Content-Type: text/html
+  Location: http://www.microsoft.com
+  Server: Microsoft-IIS/8.5                   // The server is Microsoft IIS
+  Set-Cookie:
+  ...
+  ```
+
+Beyond the Server header we should also look at the **X-Powered-By** header, which may reveal the technology behind the Web Application:
+  ```
+  root@kali:~# nc 134.170.185.46 80
+  HEAD / HTTP/1.0
+
+  HTTP/1.1 301 Moved Permanently
+  ..stripped output..
+  Server: Microsoft-IIS/8.5
+  X-Powered-By: ASP.NET                        // Web App is using ASP
+  X-UA-Compatible: IE=EmulateIE7
+  Date: Tue, 31 Mar 2015 07:48:01 GMT
+  Connection: close
+  ...
+  ```
+
+Cookies are also an interesting resource that may reveal useful information in this phase. Each technology has its default cookies names. Therefore, we can potentially guess the web server by inspecting the cookie header. Here is a short list of what you may encounter.
+  | Server | Cookie                  |
+  |--------|-------------------------|
+  | PHP    | `PHPSESSID=XXXXX`       |
+  | .NET   | `ASPSESSIONIDYYY=XXXXX` |
+  | JAVA   | `JSESSION=XXXXX`        |
+
+As you can imagine, there may be different result output depending on the service running on the machine, the version, OS, and so on.
+
+[Here](https://www.owasp.org/index.php/Testing_for_Web_Application_Fingerprint_(OWASP-IG-004)) and [here](https://www.owasp.org/index.php/Fingerprint_Web_Application_Framework_(OTG-INFO-008)) you can find a few more examples and information about different Web Server outputs.
+
+###### 2.2.1.2. WahtWeb
+Another very useful tools is [WhatWeb](https://github.com/urbanadventurer/WhatWeb). It is a command line tool that can be used to recognize website technologies, Web server versions, blogging platforms, JS libraries, and much more.
+
+Pentesting distributions such as Kali Linux have it installed by default, so you can start using it by running the following command:
+  ```
+  root@kali:~# whatweb -h
+  ```
+
+  If you are using a clean environment, you can use `git clone` to download it on your machine.
+
+This tool is very easy to use. You only need to type the name of the tool followed by the address (IP or URL) of the target and hit enter. Note that you can specify multiple targets in the command or even IP ranges.
+
+Moreover, it offers options that allows us to specify different user agents, HTTP basic authentication credentials, cookies, proxy, and much more.
+
+Let us try to run the tool against www.elearnsecurity.com (see img-88)
+
+  As you can see, we have a great deal of information in the output. Moreover, you should notice that the tool automatically follow redirections (302): in the output we have the results for both HTTP and HTTPS websites.
+
+The previous output may seem a bit messy.
+  If you want a more readable output, use the `-v` option.
+  As you can see (see img-90), we now have all the information well organized.
+
+###### 2.2.1.3. Wappalyzer
+As we have seen, WhatWeb successfully identified the target Web Server.
+Although we are not going to inspect all the tool options, feel free to explore.
+
+Instead we are going to see another very useful tool that can be used directly from our web browser. It is called [wappalyzer](https://wappalyzer.com/download) and it is a Web Browser plugin based tool that works both on Firefox and Chrome.
+
+Once you install the plugin from the previous link, you have to navigate to your target website: you will see some icons in your address bar.
+
+Each icon gives you information about the Web Server, such as the OS, the Web Server, JavaScript frameworks, and much more.
+
+In order to inspect the information found, just click on an icon and a pop up will appear on the right, listing all the information gathered.
+
+(see vid-94)
+
+###### 2.2.1.4. Fingerprinting Webserver Modules
 
 ___________________________________
 ## 2.3. Fingerprinting Frameworks and Applications
