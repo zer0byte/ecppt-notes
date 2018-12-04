@@ -412,14 +412,492 @@ In order to inspect the information found, just click on an icon and a pop up wi
 (see vid-94)
 
 ###### 2.2.1.4. Fingerprinting Webserver Modules
+Along these same lines of how we fingerprinted the web server version, we can fingerprint what modules are installed and is use on the server.
+Modules we are looking for are ISAPI modules (for IIS) or Apache modules that may interfere with or alter our test results.
+
+Nowadays, more and more websites use search engine and human-friendly URLs (SEF URLs)
+  So-called "ugly" URLs are the ones that carry query string parameters and values that are meaningful to the web server but not representative of the content on the page.
+
+  For example, `www.example.com/read_doc.php?id=100` tells the server to query the database to fetch the document with `id=100`. This is not helpful to search engines looking for the document's contents.
+
+  A search engine-friendly version would be `www.example.com/read/Buffer_Overflow.html`
+
+So, how are the two translated?
+  When a user request `read_doc.php?id=100` the server side module in charge of translating the URL will use regular expressions to match a **Rewrite rule** and will translate the URL according to the rules specified by the administrator.
+
+  In the case above, *Buffer overflow* is the thitle field in the database at `id=100`
+
+URL rewriting is done on Apache with the **mod_rewrite** module or **.htaccess**. On IIS it is handled by *Ionic ISAPI Rewrite* or *Helicon ISAPI Rewrite*.
+
+The presence of URL-rewriting is easy to recognize as in the above example and should be kept in mind during the testing phase when attempting input validation attacks.
+
+This type of attacks involves the use of malformed input (among the other data input) using the URL parameter.
+
+Not having the real URL, and only the rewritten URL, will make it much more difficult for penetration tester to try these attacks on URLs. However, still be possible to carry malformed payload using other input *channels* such as: forms, cookies, and headers.
+
+Search engine friendly URLs are not a security feature at all; input validation attacks are still possible if you can reverse-engineer the translation rules.
+  However, there will be only rare cases in which the rewritten URL is easy to reverse engineer to its original form.
+  Also note that input from forms are still intact for us to tamper with.
+
+  ```
+  Example: www.example.com/news_read/112
+  ```
+
+  We can make a guess by requesting `www.example.com/news_read.php?id=112`.
+  If the two pages match and no 404 error is returned, we have found the URL rewriting rule.
+
+  As you can see, we are guessing on the parameter name- (id), which usually does not appear in the rewritten URL.
+
+
+#### 2.2.2. Enumerating Subdomains
+Since we have already discussed DNS, this is the right place to mention **subdomain enumeration**.
+
+The enumeration exercise starts by mapping all available subdomains within the domain name.
+
+This will widen our attack surface and sometimes reveal hidden management backend panels or intranet web applications that the network administrators intended to protect through the old disgraced method of **security through obscurity**.
+
+There are a lot of ways to enumerate subdomains:
+- Netcraft
+- Google
+- Crawling / Brute-force
+- Tools
+- Zone transfers
+
+###### 2.2.2.1. Enumerating Subdomains with Netcraft
+We have already used Netcraft to gather information from a specific domain, but Netcraft can also be used to enumerate subdomains.
+
+In order to list all the subdomains of a specific target we need to open the [Netcraft search page](http://searchdns.netcraft.com/), select *subdomain matches* from the dropdown menu and type in our string (see img-106).
+
+If the target has any subdomain, we will see them listed on the results pages. If you want to get more information about a specific subdomain, just click on the **Site Report** icon. (see img-107)
+
+###### 2.2.2.2. Enumerating Subdomains with Google
+Although tools such as Netcraft are very useful in finding subdomains, search engines are sometimes an even better option.
+We will exploit the power of [Google search operators](http://www.googleguide.com/advanced_operators_reference.html) to tweak the results and enumerate a list of subdomains.
+
+Let us see some example that can be run with Google.
+  Let us suppose our target is *microsoft.com*, and our goal is to obtain a list of all its subdomains.
+
+  Our first search query string will be something like this:
+    ```
+    site:.microsoft.com
+    ```
+    The `site:` operator restricts the search results to the domain specified. In our case means that we will get results that have the domain *.micorsoft.com*.
+
+    Let's see what we get.
+
+  As we can see, each result displayed is part of the domain *microsoft.com* (see img-110)
+
+  As you have probably noticed there are some subdomains that appear more often than others (such as *www*).
+
+Moreover, once you discover some subdomains, we have to further tweak our search query in order to delete them from the results.
+  To do this we can use the minus operator (`-`) in conjunction with `site` or `inurl`:
+    ```
+    site:.microsoft.com -inurl:www
+    ```
+    or
+    ```
+    site:.microsoft.com -site:www.microsoft.com
+    ```
+
+  As we can see in the results, the subdomain *www* no longer appears in the output (see img-112)
+
+Now we can continue tweaking our search query by removing the new subdomains found. So we will keep adding `-site` or `-inurl` until we find all the subdomains:
+  ```
+  site:microsoft.com -site:subdomain1.microsoft.com
+  site:subdomain2.microsoft.com -inurl:subdomain3.microsoft.com
+  ```
+
+As you can imagine the process can be continually exhaustive, and why it is important to take good notes and use your mindmapping software.
+
+###### 2.2.2.3. Enumerating Subdomains with Tools
+In addition to the search engines, there are plenty of tools that can be used to enumerate subdomains.
+Some of them parse search engines results, while others use wordlists to verify if a specific set of domains exist.
+
+The following is a small list of these tools:
+- [dnsrecon](https://github.com/darkoperator/dnsrecon)
+- [subbrute](https://github.com/TheRook/subbrute)
+- [fierce](https://github.com/davidpepper/fierce-domain-scanner)
+- [nmap](http://nmap.org/book/man-host-discovery.html)
+- [dnsenum](https://code.google.com/p/dnsenum/downloads/list)
+- [knock](https://github.com/guelfoweb/knock)
+- [theHarvester](https://github.com/laramies/theHarvester)
+- [recon-ng](https://bitbucket.org/LaNMaSteR53/recon-ng/wiki/Usage%20Guide)
+
+
+Since they are all very similar, we are going to inspect only a few (`subbrute`, `dnsrecon`, and `theHarvester`). We encourage you to try them by yourself to verify how they work and what features they offer.
+
+**Subbrute**
+The first tool, as the name suggests, uses a default wordlist to find the subdomains of a specific target. These types of tools are very useful if we cannot rely on search engines (ie: performing an internal pentest).
+
+If you do not have the tool already installed on you machine, you can simply run the following command:
+  ```
+  git clone https://github.com/TheRook/subbrute.git
+  ```
+
+Once you have cloned the repository on your machine, you can launch the tool and display its options with the following command:
+  ```
+  python subbrute.py -h
+  ```
+
+  By running the previous command, it will show that it uses a default wordlist named `names.txt`
+
+Let's try to run the tool and see what subdomains it is able to enumerate. We are not going to use any particular options this time. (see img-119)
+  ```
+  root@kali:~#python subbrute.py microsoft.com
+  microsoft.com
+  www.microsoft.com
+  home.microsoft.com
+  cs.microsoft.com
+  members.microsoft.com
+  blogs.microsoft.com
+  ...
+  ```
+
+As shown in the previous screenshot, by simply running the tools against the *microsoft.com* domain, it is able to enumerate an acceptable number of subdomains.
+
+In case you want to use a custom wordlist you can simply run the following command:
+  ```
+  python subbrute.py -h -s [path_to_file.txt]
+  ```
+
+**dnsrecon**
+It comes pre-installed on Kali Linux. You can get the help menu with the following command:
+  ```
+  dnsrecon -h
+  ```
+
+Similarly to `subbrute`, `dnsrecon` can leverage wordlists to enumerate subdomains. However, in addition to this, it also offers the possibility to use search engines like google.
+
+The option we are interested in is `-g`: *perform Google enumeration with standard enumeration*. Moreover, it is multi-threaded, so we can speed up the process by setting more threads (`--threads`). Let us use *microsoft.com* once again and run the following command:
+  ```
+  dnsrecon -d microsoft.com -g
+  ```
+
+  As you can see in the output (see img-123), first, it executes some general enumeration by checking the DNS configuration and then begins enumerating the domains via Google.
+
+**theHarvester**
+`theHarvester` is a tool for gathering subdomains names from different public sources such as search engines or PGP key servers. Among its subdomain enumeration features, theHarvester is also able to retrieve data related to the target organizations from many websites such as *Linkedin*, *People123*, *Twitter*, *Google+*, and few more.
+
+Kali Linux already has `theHarvester` installed by default.
+We can simply run it as follows:
+  ```
+  theharvester [options]
+  ```
+  Options:
+  - `-d`: Domain to search
+  - `-l`: Limit the results to work with
+  - `-b`: Data source (bing, google, linkedin, pgp, all,...)
+  - `-f`: Output to HTML or XML file (optional - good for long lists)
+
+Now that we know its basic operations, let's try to run the tools against *microsoft.com*. We will use google as the search engine, we will limit the results to 200, and also store the results into a HTML file.
+
+Our command will look like this (see img-127):
+  ```
+  theharvester -d microsoft.com -b google -l 200 -f /root/Desktop/msresults.html
+  ```
+
+Another very useful feature of theHarvester, is the ability to collect data from other sources, such as Linkedin. Obviously, in order to list all the people that are somehow related to our target.
+  For example, let us see what happens if we use the target *elearnsecurity*:
+    ```
+    theharvester -d elearnsecurity.com -b linkedin -l 200
+    ```
+
+  We will obtain somethings like the following screenshot (see img-129).
+  All the people listed here are related to *elearnsecurity* (employees, customers, partner, and so on)
+
+
+###### 2.2.2.4. Enumerating Subdomains with Zone Transfers
+In addition to search engines and tools, there are other ways  we can discover information about domains and subdomains.
+
+One of these is through a [Zone Transfer](https://en.wikipedia.org/wiki/DNS_zone_transfer)
+
+  Zone transfer is the term used to refer to the process by which the contents of a DNS Zone file are copied from a primary DNS Server to a secondary DNS Server.
+
+  Zone transfers are usually the result of a misconfiguration of the remote DNS server. They should be enabled (if required) only for trusted IP addresses.
+
+  When zone transfers are available, we can enumerate all of the DNS records for that zone. This includes all the subdomains of our domain (A records).
+
+On Windows systems, we can gather information from Zone Transfer by running the following commands: (output: see img-133)
+  ```
+  nslookup
+  server [NAMESERVER FOR mydomain.com]
+  ls -d mydomain.com
+  ```
+  You can find the `[NAMESERVER]` by just doing:
+    ```
+    nslookup -type=NS mydomain.com
+    ```
+
+On Linux systems you can run the following command: (output: see img-135)
+  ```
+  dig @nameserver axfr mydomain.com
+  ```
+
+#### 2.2.3. Finding Virtual Hosts
+A virtual host is simply a website that shares an IP address with one or more other virtual hosts.
+These hosts are domains and subdomains.
+This is very common in a shared hosting environment where a multitude of websites share the same server/IP address.
+
+For example:
+  There are multiple virtual hosts associated with the IP address `192.168.3.2`:
+  - www.foo.com
+  - mail.foo.com
+  - admin.foo.com
+  - extranet.foo.com
+
+Many of the tools we have seen previously for enumerating subdomains can also be used in finding virtual hosts. The following is an example of what the tool **fierce** is able to discover starting from the domain *elearnsecurity.com* (output see img-139)
+
+**Remember to update your map with the latest information!**
 
 ___________________________________
 ## 2.3. Fingerprinting Frameworks and Applications
+Once we have a list of subdomains, we will apply the techniques that follow in this module to all of them.
+
+We will basically start looking at the webpages running on each of the subdomains we have domains.
+
+Common applications are software that is available for anyone to use (aka COTS - Common off the shelf).
+
+They can be either open source or commercial, but what makes them interesting for our analysis is the fact that we have access to their source code (and other security researchers may have looked at it before us)
+
+We are able to read both the application logic and the security controls implemented (or not implemented) therefore, we gain a big advantage over applications built in-house.
+For a pentester, the logic of in-house applications is a "guesstimate" task to some degree.
+
+Common applications may be:
+- forums (like phpBB, vBulletin)
+- CMS's (like Joomla or Drupal)
+- CRM's, blogging platforms (like WordPress or Movable types)
+- Social networking scripts and a number of applications
+
+For example, web scripts are available online at sites like http://www.hotscripts.com/
+
+Almost all of these freely (meaning open to anyone, regardless of their price) available applications suffered from some kind of vulnerability in their history.
+
+Understanding what piece of commonly available software the web server is running will give us the possibility for an easy exploration by just looking online for a publicly available exploit.
+
+Even here, obtaining the name of the application will not be enough for us. We need exact version in order to look for a working exploit online.
+A basic step for fingerprinting the application involves browsing the website and looking at its URLs, appearance, and logic.
+
+Sometimes it is as easy as looking for the application's name in the web page content.
+In other cases, we need to look at the web page source; the name and version is usually included in HTML comments or even in the HTTP headers.
+
+  Sending a GET request: This is how a Joomla powered website responds to a normal GET request:
+    **Request**
+    ```
+    GET / HTTP/1.1
+    Host: www.joomla.org
+    User-Agent: Mozilla/5.0 (x11; Linux x86 64; rv:31.0)
+    Gecko/20100101 Firefox/31.0 Iceweasel/31.5.3
+    ```
+    **Response**
+    ```
+    HTTP/1.x 200 OK
+    Content-Encoding: gzip
+    Content-Type: text/html; charset=utf-8
+    Server: LiteSpeed
+    Vary: Accept-Encoding
+    X-Content-Encoded-By: Joomla! 2.5
+    ```
+
+    As you can see, by just using telnet, Burp suite, web browsers, or any other way that will let us read the raw response, headers will reveal useful information about the website; this includes the CMS running on it: **Joomla 2.5**.
+
+    Moreover, remember that response headers may give other valuable information such as PHP version, exact web server version, and modules installed.
+
+  Other applications may behave differently. The HTTP header exposing the CMS version can be suppressed so we would need to move on, examining the web page content for hints.
+
+The open source community behind these projects (but many commercial applications act similarly), usually require the final user to keep a footer notification in place that gives credit to the project for more support and acknowledgement.
+
+  This also happens for commercial software like the famous forum application **vBulletin**; it reveals its presence both in the website title and footer:
+    ```
+    Copyright © 2015 vBulletin Solutions. All Rights Reserved vBulletin® is a registered trademark of vBulletin Solutions.
+    ```
+
+  Sometimes we have to look more in-depth to find what we are looking for.
+  We may need to read  the web page source code and look for information in the META tags and in HTML comments. This is **WordPress**, the most popular blogging open source web application:
+    ```
+    <meta name="generator" content="Wordpress 4.2-beta-31946" />
+    ```
 
 
+**Fingerprinting Third-Party Add-Ons**
+  Many different kinds of CMS's available online for free or licensed commercially.
+    Very common examples of open sources CMS's are Joomla, Drupal, or Mambo.
+    These have a large customer base and an ever-growing support community providing free add-ons, components, and extensions, which add more functionality to the core application.
+    These add-ons are usually poorly coded and contain vulnerabilities.
+
+  While the core parts of these projects are usually built following the best practices of secure coding, thousands of free-to-use extensions are coded by amateurs, and most of the time, these are affected by many different web application vulnerabilities.
+
+  In the case of Joomla, (this discussion applies to many other similar projects) fingerprinting installed add-ons is as easy as looking at the website URLs:
+    Joomla URLs consists of 3 main parts:
+      ```
+      index.php?option=%component_name%&task=%task_value%
+      ```
+      *index.php* is the only script you will ever see on Joomla.
+      It is in charge of loading the specified components passed in, via the `option` parameter.
+      More *tasks* and arguments are passed to that component with subsequent parameters.
+
+    The following is an example of the very popular `Docman`, document manager component:
+      ```
+      index.php?option=com_docman&task=doc_view&gid=100
+      ```
+      Here we are loading the `Docman` add-on, declaring that we want to view the document with `id=100`.
+      It should be clear that by looking at the `option` parameter in the URL, we can easily understand what potentially vulnerable third-party add-ons are installed and in use on the website.
+
+  In our *Information gathering* process, we will not only list all the common applications in use, but also, all the third party add-ons in use in that application. These will likely be useful for our penetration tasks later on.
 
 ___________________________________
 ## 2.4. Fingerprinting Custom Applications
+When you are not in front of a commonly available application, you have to go through an initial overview of the application logic.
+
+In this case we have an in-house application, customized for the organization we are auditing. The inner logic is unknown to us but can be reverse engineered with a careful analysis of its behavior.
+
+Our first step in this case will be to consider the overall scope of the application:
+- What is it for?
+- Does it allow user registration?
+- Does it have an administration panel?
+- Does it take input from the user?
+- What kind of input?
+- Does it accept file uploads?
+- Does it use JavaScript, AJAX, or Flash? And so on.
+
+These questions can be answered by just visiting the website and taking notes of anything we come across in the process.
+
+*Spidering* (or crawling) the application is addressed at a later stage, but valuable in this case.
+
+First, we want to understand what our application does and how it does it.
+
+  Another important aspect to take into consideration is the possibility that we may find common software intertwined with custom code.
+
+  Forums and blogs are great examples when we are dealing with a custom application.
+    It is very likely that we find open source or commercial applications implementing blogs, forums, shopping carts, and a number of other functions.
+
+    This applied to a small company websites as well as corporate ones. Recognizing them among the custom code is important and should be noted on our functional graph.
+
+#### 2.4.1. Burp Target Crawler
+At this point, it would be helpful to browser the application with a proxy in the middle of our requests, collecting all the headers and responses. This will help us analyze the results later.
+
+A good recommended proxy for this stage is [Burp Proxy](http://portswigger.net/burp/download.html)
+  This is the **Burp Target** tool (see img-169). Burp lets us configure our scope through simple regular expressions.
+
+  While browsing, and if enabled, the crawler (**Spider** tab) automatically generates and records requests and response headers for further inspection. (see img-170)
+
+  The crawler results are displayed in directories format. (see img-171)
+  For each request made by the web browser (or the crawler), Burp stored the HTTP Request and Response headers.
+  This will let us inspect the web application behavior carefully.
+
+Burp is a very powerful tool.
+  It lets us store all the data traveling to/from our browser while:
+  - Using the crawler
+  - Manually navigating the website from the web browser
+
+  We will then be able to carefully inspect the web application.
+
+  Your browsing of the most important parts of the target website will allow Burp to collect enough information for us to analyze.
+
+  In this analysis phase, it may be necessary to further test the application to draw a more clear, functional graph.
+
+  We would raw the most important parts of the entire web application.
+
+#### 2.4.2. Creating a Functional Graph
+Pentesting a complex web application is challenging as you have to keep close attention to small details while not forgetting the big picture.
+
+The advice is to study the whole target behavior, then split the tests in smaller tasks and take care of each one.
+
+**Study the Target**
+  In this phase you would use the web browser to study the target under the behavioral point of view. No technical analysis is involved.
+
+  The purpose of this phase is to recognize the blocks by which the target website is made of.
+
+  The following questions should help guide you:
+    - What is the purpose of the website/web application?
+      - Sell online?
+      - Corporate online presence?
+      - Blogging?
+    - What seems to be the core of the website?
+      - Selling products?
+      - Do they sell memberships? digital contents?
+    - Does it require login to perform certain actions?
+    - What are the main areas of the website?
+      - Blogs?
+      - eCommerce area?
+
+  The answers to the above questions will help you illustrate the website blocks on paper.
+  Make sure to use different colors for the main area of the website (*eCommerce*).
+  If you find a login protected area use a rhombus.
+  We have used a dark green for the HOME.
+
+**Study the Blocks**
+  Now we will repeat our process for each block more closely.
+
+  What we want to know if:
+  - Any block uses a third-party application (we will change the shape of the block if so and note the kind of application)
+  - Any block can only be accessed through the login (we will create a first path using arrows)
+
+  *eCommerce* is a green Hexagon because it is a third-party application and at the same time is the Core of the whole website (see img-182)
+
+
+**Functional Graph**
+  The goal of the functional graph is to visually spot important information at a glance.
+
+  We will use this functional graph as a basis for further charting of our information and prepare it for testing part.
+
+This step is vital and we recommend taking it seriously as it will allow you to concentrate your testing efforts on smaller parts instead of the entire application.
+
+The ancient motto *divide et impera* (divide and conquer) is the most efficient solution when dealing with complex application.
+
+For each smaller pat of the application, we will add notes and comments including (but not limited to):
+- Client side logic (usually JavaScript code in use)
+- flash applications
+- cookies (a new cookie may be set when browsing this area of the website)
+- authorization required
+- form
+- and so on
+
+It should be clear that our attack methodology will vary depending on the data collected in this phase and, as such, the more information we retrieve from direct inspection, the greater chance we will have in identifying exploitable vulnerabilities.
+
+#### 2.4.3. Mapping the Attack Surface
+The attack surface is the area of the application in which we will focus all of our security testing efforts.
+  The more we know about our target web application, the wider the attack surface will be.
+  Use the suggested graphing techniques or create one you are comfortable with and stick with it.
+
+  In our previous step, we dissected the application into smaller blocks, noting its most important functionalities and features:
+  - Client Side Validation
+  - Database Interaction
+  - File Uploading and Downloading
+  - Display Of User Supplied Data
+  - Redirection
+  - Access Controls and Login Protected Pages
+  - Error Messages
+  - Charting
+
+  Going deeper into this process, we will have to add more detailed information that will serve as a checklist in our testing phase.
+
+  We will collect this information on a per-block basis.
+  A suggested graph is given in the image (see img-189).
+  An alternative is given in the Charting tab. We will inspect it later on.
+
+Let's begin mapping the attack surface:
+1. Client Side Validation
+
+
+2. Database Interaction
+
+
+3. File Uploading and Downloading
+
+
+4. Display Of User Supplied Data
+
+
+5. Redirection
+
+
+6. Access Controls and Login Protected Pages
+
+
+7. Error Messages
+
+
+8. Charting
 
 
 
