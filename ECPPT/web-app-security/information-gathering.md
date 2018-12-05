@@ -877,42 +877,231 @@ The attack surface is the area of the application in which we will focus all of 
 
 Let's begin mapping the attack surface:
 1. Client Side Validation
+User submitted data through web forms can be validated on the client side, server side, or both.
 
+Recognizing where the validation occurs will allow us to manipulate the input order to mount our input validation attacks like *SQL Injection*, *XSS*, or general logical flaws.
+
+We can reveal the presence of client side validation by inspecting the web page source code and looking at the JavaScript functions triggered upon form submission.
+
+We can do this in different ways. Our favorite is **Firebug**, the very popular Firefox Add-on that lets you inspect the web page source code easily without having to read hundred lines of code before finding the interesting information.
 
 2. Database Interaction
+Detecting database interaction will allow us to look for *SQL Injection* vulnerabilities in the testing phase.
 
+  By database interaction, we mean that the user input changes the appearance of the page because either different data is fetched from the database or new data is added.
+
+  This hints that the SQL queries are generated from our input if the input is not properly sanitized, and may result in *SQL Injections*
+
+It is important to note that pages that use the database in an active way.
+
+  While you may want to skip all the pages that do not directly connect to our input, they are in fact retrieving data from the database and therefore making them important.
 
 3. File Uploading and Downloading
+It is not uncommon to encounter web pages providing dynamic downloads according to a parameter provided by the user.
 
+  For example:
+    ```
+    www.example.com/download.php?file=document.pdf
+    ```
+
+This kind of behavior, if not handled correctly, can lead to a number of nasty attacks including **Remote** and **Local File Inclusion** vulnerabilities. They will be explained in the next few modules.
+
+Note: In the phase we are not interested in direct downloads like
+  ```
+  www.example.com/document.pdf
+  ```
+
+File uploads forms are very common in forums, social networks, and CMSs. Desired files types can be anything from images, documents, and even executables.
+
+Handling these uploads is a critical task for the web developer.
+
+Mistakes in the way these documents are validated upon upload can lead to critical vulnerabilities, so we will make sure to note any page that offers this feature.
 
 4. Display Of User Supplied Data
+This is one of the most common features in a dynamic website.
 
+Finding user supplied data will bring us to the top web application vulnerability: **Cross site scripting**
 
-5. Redirection
+We will analyze it in depth on the next module.
 
+5. Redirections
+Redirections are server side directives to automatically forward visitor of a web page to another web page.
+
+From the server side perspective the server can issue two different HTTP Response codes to make a redirect : *301* or *302*
+
+  The difference between the two is not important for our analysis. We will just have to remember that *3xx* code stands for redirect.
+
+From the client perspective, the redirection is handled by the web browser. It recognized the *3xx HTTP Response Code* and makes a request to the page contained in the *Location* header.
+
+Example:
+  **Request**
+  ```
+  GET /index.php?id=100
+  HTTP/1.1
+  Host: www.example.com
+  ```
+  **Response**
+  ```
+  HTTP/1.x 301 Moved Permanently
+  Content-Length: 0
+  Content-Type: text/html
+  Location: http://www.example.com/index.php?=500
+  ```
+  The client browser will make a request to http://www.example.com/index.php?=500
+
+Another kind of refresh is the so-called meta refresh.
+The meta HTML tags are used to add metadata information to a web page. This data is usually read by search engines to better index the web page. Meta redirect, instead, is a way to generate a redirect either after *x* seconds or immediately if *x=0*
+  Example:
+  ```
+  <meta http-equiv="Refresh" content="0; url=http://www.example.com" >
+  ```
+
+Finding redirects is an important part of our attack surface as *HTTP response splitting* and other *Head manipulation* attacks can be performed when redirects are not handled properly.
 
 6. Access Controls and Login Protected Pages
-
+Login pages will reveal the presence of restricted areas of the site.
+We will employ authentication bypass techniques as well as password brute forcing to test the security of the authentication routines in place.
 
 7. Error Messages
-
+While at this stage, we will not intentionally cause the application to generate errors (we will see later how it can be a great source of information), we will collect all the errors we may encounter while browsing it.
 
 8. Charting
+We want to keep all our information well organized.
+This will let us spot the attack surface and perform our tests in a much easier and scientific manner.
 
+We advise to add the information found for each block visually like this table below (see img-208) or using a graph.
 
+|Blocks|Client Side Validation|Redirections|Database Interaction|Errors|Displays User Data|Login|
+|----------|------|------|------|------|------|------|
+|Blogs     |  x   |  v   |  v   |  x   |  v   |  x   |
+|e-Commerce|  v   |  x   |  v   |  x   |  x   |  v   |      
+|Downloads |  x   |  x   |  v   |  x   |  x   |  v   |
+
+You can also add more information retrieved, e.g. the URL inside the block where you encountered it.
+
+During the process of mapping the attack surface, we have introduced 2 alternative charting techniques.
+- **Tree based** chart  : especially good if there are just a few blocks. Its value is in visually spotting Information
+- **Table based** chart : is what we can actually use in our testing phase, where a test for a given vulnerability will be triggered by a `V` in the table.
+  For example:
+    A detected interaction with a database should be tied to a test for *SQL Injection*.
+    An *access restricted* page may be checked against *authentication bypass techniques*.
+
+  This process will guarantee the best results while making sure that you do not miss any testable areas.
 
 ___________________________________
 ## 2.5. Enumerating Resources
+The resources we are going to enumerate in this step of our information gathering process are: subdomains, website structure, hidden files, configuration files, and any additional information leaked because of misconfiguration.
 
+This information will have to be saved, as usual, for later use (if you have not read the [Methodology document](https://members.elearnsecurity.com/course/resources/name/ptp_v5_section_2_module_1_attachment_eLearnSecurity_Handling_Information) already, this is the right time to do so).
 
+#### 2.5.1. Crawling the Website
+Crawling a website is the process of browsing a website in a methodological or automated manner to enumerate all the resources encountered along the way.
 
+It gives us the structure of the website we are auditing and an overview of the potential attack surface for our future tests.
+A crawler finds files and folders on a website because these appear in the web page links, comments, or forms.
+
+In the section 2.4, we saw a manual, direct-browsing, crawling mechanism using **Burp Proxy**.
+
+We can have Burp Proxy perform an automatic and exhaustive crawling of a website. This gives us the hierarchical website structure in the form of folders and files.
+  To do that, the first step is to jump to the **Target** tab of **Burp** and then to the Scope subtab to set up our scope.
+
+    This is an example of what should be inserted in the host/IP range field to retrieve data only from a given domain name: `^www\.domain\.com$` where `domain` is in our test scope.
+
+  Once the scope has been set, we will have to make sure that the proxy is activated on port `8080`.
+    To do this, we have to open the **Proxy** tab, select the **Options** subtab and make sure that the running checkbox is activated.
+
+  At this point, we activate the crawler by going to **Spider** tab and activating the **spider is running** checkbox.
+
+  We will set up our browser to use the proxy `127.0.0.1:8080` and navigate to the home page of the website we want to crawl.
+    This should appear in the Target tab with Burp as seen in our previous tutorial on Burp Suite.
+
+  We have 2 ways to start the actual crawling process:
+  - right-click on the `host` and click `spider this host`
+  - enable the spider and start browsing the web app from our browser
+
+  We will be able to perform automatic form submission, crawling pages that are reachable only through a POST request, as well as provide login data to crawl access-restricted areas of the site.
+
+  The ability to filter the data we receive makes sour analysis phase easier. We will be able to see only the pages with redirects, or only pages with forms, etc.
+
+One convenience of Burp is the built-in fuzzer and HTTP request editors in the same program. By right-clicking on any crawled web page, we will be able to send it to the **Intruder-** to fuzz it, or to **Repeater-** to manually alter the request in our tests.
+
+Although Burp may not seem so intuitive at first, it is recommended that you get familiar with this tool.
+You will benefit from it in the long run.
+
+(see vid-222)
+
+#### 2.5.2. Finding the Hidden Files
+While a crawler will only enumerate publicly available resources found through links and forums; *hidden files crawlers* and *fuzzers* like **DirBuster** will be able to find files that the web developer does not want us to see.
+
+  For this reason, these files are the most important source of information we can find and include: backup files, configuration files, and a number of other resources that are very useful for our audit.
+
+**DirBuster** is a mature OWASP project that allows us to crawl a website and also mount a dictionary or brute force discovery attack on the remote file system by probing each call and identifying a correct guess through the HTTP response code or web page content (in case the website uses a custom 404 page)
+
+The tool ships with few differently-sized dictionary lists that cover the most common folder and file names.
+We can choose to append an arbitrary extension to the items in the dictionary (matching the one used by our website).
+  For example, if the website is using PHP files, we will use `.php` as our extension.
+
+You can use different settings for crawling: custom user-agent, authentication, html elements to extract links from, number of requests per second, etc. (see img-227)
+
+DirBuster will present the results as a tree of folders and files.
+
+We need to pay particular attention to files and folders that were not  retrieved by **Burp Proxy Spider**
+
+**Backup and Source Code File**
+  Web developers are known to be lazy. They have to do their job well, but quickly. Their project time constraints often bring errors that can be fatal to the overall website security.
+
+  Looking for backup files and source code files left on a server is an often overlooked step in the information gathering process that we will take seriously as it can give us not only useful information but also, sometimes, complete access to the organization's secrets.
+
+  A web server is instructed to treat special file extensions as `cgi` files, where the source code is interpreted and not relayed to the client.
+  When the extension is altered for back up or maintenance purposes, we are often given the application logic and if we are lucky enough, credentials to access the databases connected to that application.
+
+  Such common, disgraced practices, involve renaming the extension in `php.bak` or `asp.bak` for example.
+
+  In Burp, we will try to probe the web server, for every file found by our crawlers in the previous steps, for presence of back up files appending common backup extensions like `.bak` or `_bak` or `01` and so on.
+
+  A good list of backup files extension follows:
+  - bak
+  - bac
+  - old
+  - 000
+  - ~
+  - 01
+  - `_bak`
+  - 001
+  - inc
+  - Xxx
+
+  The extension `.inc` stands for include and it has been an abused version for a long time; in **ASP 3.0** these files were used to contain source code to be included as part of the main asp page execution.
+
+  We recommend checking for their presence with DirBuster, especially when the site uses ASP as the server-side scripting engine.
+
+  (see vid-233)
+
+#### 2.5.3. Enumerating User Accounts
+Among the resources we can enumerate in a website, *usernames* are another important bit of information that many turn up useful information when we have to audit an authentication mechanism.
+
+A badly designed system can reveal sensitive information even if wrong credentials have been inserted.
+
+For example, a web application could reveal information about the existence of a user.
+
+It is important to note, that while determining valid *usernames* is something not considered as a serious threat, *usernames* are half of what is needed to login.
+
+While a user, at the login stage, wants to know whether the typed username and password is wrong, applications may reveal too much information. They can make an intruder's life easier by making it possible to enumerate users.
+
+How many times have your seen the incorrect login messages like **Login incorrect** or **Username blah does not exist**?
+What is different in these messages?
+
+Depending on the application behavior we may be able to discover valid usernames.
+We will see later how to use tools such as **Burp Suite** and **Patator**, to enumerate valid usernames on the target application.
+
+**Remember to update your map!**
 ___________________________________
 ## 2.6. Information Disclosure Through Misconfiguration
 
 
 
-## 2.7. Google Hacking
 ___________________________________
+## 2.7. Google Hacking
 
 
 
