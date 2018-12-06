@@ -1060,16 +1060,16 @@ We need to pay particular attention to files and folders that were not  retrieve
   In Burp, we will try to probe the web server, for every file found by our crawlers in the previous steps, for presence of back up files appending common backup extensions like `.bak` or `_bak` or `01` and so on.
 
   A good list of backup files extension follows:
-  - bak
-  - bac
-  - old
-  - 000
-  - ~
-  - 01
+  - `bak`
+  - `bac`
+  - `old`
+  - `000`
+  - `~`
+  - `01`
   - `_bak`
-  - 001
-  - inc
-  - Xxx
+  - `001`
+  - `inc`
+  - `Xxx`
 
   The extension `.inc` stands for include and it has been an abused version for a long time; in **ASP 3.0** these files were used to contain source code to be included as part of the main asp page execution.
 
@@ -1097,13 +1097,196 @@ We will see later how to use tools such as **Burp Suite** and **Patator**, to en
 **Remember to update your map!**
 ___________________________________
 ## 2.6. Information Disclosure Through Misconfiguration
+Sometimes we find that the best way to retrieve relevant information about our web applications is to look for potential mistakes in web server configuration.
+A quick and very common way to gather information, files, source code, and misconfigurations is by looking for open directory listings.
 
+#### 2.6.1. Directory Listing
+These directories have been configured to show a list of the files and subdirectories in paths that we can access directly.
 
+Note: 99% of the time, these directories have not been deliberately configured to show their content. They are just the result of misconfiguration.
 
+(see img-241)
+
+The previous figure shows a sample of a webserver-generated webpage showing directory listing for the main folder.
+
+As you can imagine, you may have access to interesting information and files that potentially contain database information, login credentials, absolute server path, and so on.
+
+Looking for directory listings is an easy task that anyone with a basic experience in scripting languages like Perl, Ruby, Python, and so on can do; and can be automated in a few minutes.
+
+Starting with the DirBuster output, (from the previous step) which has uncovered a number of public and hidden directories on the server, let us do a **GET** request for each directory found. We will look at the web page content to search for patterns like *To parent directory*, *Directory Listing For*, *Index of* ...
+
+If the pattern is matched, we should be in front of a directory listing we can navigate to using our web browser.
+
+#### 2.6.2. Log and Configuration Files
+**Logs** are text files left on the web server by applications to keep track of different activities: errors, logins, informative messages, and so on.
+
+  They usually contain valuable information that we will want to uncover.
+
+  Every web application has a configuration file placed somewhere in the application's folder structure.
+  For example, *Joomla* stores the configuration file in the application root folder with the name *configuration.php*
+
+**Configurations** files contain settings and preferences regarding the web applications installed.
+
+  They can contain the username and password that the application uses to connect to the database, or other administrative area.
+
+  The file in itself is not viewable because it has the *.php* extension, but we should look for backup alternatives (`configuration.php.bak`, `configuration.php.old`,...).
+
+  In the case of Joomla and other similar CMSs, the configuration file contains the username and password of the database user used to connect to the database.
+
+#### 2.6.3. HTTP Verbs and File Upload
+Among the different mistakes an administrator can make in the configuration of the web server, leaving a directory writeable by anyone is the biggest.
+
+Writable directories are all those directories that allow us to upload our own files on the server through the **PUT** HTTP verb.
+
+It is worth noting that the availability of the PUT verb among the allowed verbs does not imply that we can upload files on the server.
+We will be able to use the PUT verb only on writable directories.
+
+Steps:
+1. The first step in this process is to check for the availability of the PUT verb among the allowed verbs.
+  To do this we will use `PuTTY` or `netcat` to query the webserver directly issuing the following request:
+    ```
+    OPTIONS / HTTP/1.1
+    Host: targetsite.com
+    ```
+2. Then the server will respond with the lits of the available verbs:
+    ```
+    ...
+    Public: OPTIONS, TRACE, GET, HEAD, DELETE, PUT, ...
+    ...
+    ```
+  We are lucky! The server allows a number of verbs.
+  Note: this was an example. Usually you will find out that only **GET**, **POST**, **HEAD** and **TRACE** verbs are enabled
+
+  Another thing to note is that if the **OPTIONS** verb is not allowed we will receive either a **4xx** or **5xx** error message according to the webserver.
+
+This is just the beginning. We need now to know what directory, if any, we can upload to.
+  It is important to understand the correlation between the directory privileges and the possibility of uploading files: if the server's local user with which the website is executed also has the write attribute enabled for a given folder, then we will be able to write to that folder.
+
+In **IIS**, every configured website can be run by the different local users. These user are assigned to the website visitor in order for him to browse the website.
+  If the user *IUSR_test* is set as the anonymous account for *test.com* then all the directories writable by *IUSR_test* will be our target (because we are indeed using *IUSR_test*'s privileges to browse the website).
+
+Looking for writable directories is guesswork. There is not a straightforward method on how to verify directory privileges remotely.
+
+Sometimes though, we can study the application and understand what directories are used to store user submitted avatars, files, attachments, etc. (see img-257)
+
+  To do this, we will look for the path that brings us to these files.
+    For example, in a forum, we can find the path to a user's submitted avatar. This is useful because there is a folder configured to store these files.
+
+  Once we have a pool of candidate folders we will try our **PUT** command on:
+    ```
+    PUT /writable_dir/test.html HTTP/1.1
+    Content-Length: 184
+    <RETURN>
+
+    [CONTENT OF TEST.HTML]
+    <RETURN>
+    <RETURN>
+
+    ```
+    If the upload is successful, the server will respond with a `201 Created`
+
+    It is important to provide the `Content-Length` of the payload that we want to upload in the file specified as an argument of the **PUT**. The actual file content is in the request payload.
+
+  To make sure that our file has been successfully uploaded to the server, we will look for it with our favorite browser.
 ___________________________________
 ## 2.7. Google Hacking
+When we talk about *Google Hacking*, we mean using Google's sophisticated search operators for our information gathering purposes.
 
+*Johnny Long* has been one of the first to uncover using Google to find misconfigured web servers, sensitive information left on the server (that crawled by Google bots), password files, log files, directory listings, and many others.
 
+His [Google Hacking Database](https://www.exploit-db.com/google-hacking-database/) contains a list of Google searches for every purpose.
+
+Here is and example:
+  - Fingerprinting web servers is possible through Google by querying for Apache online documentation or special folder added by IIS to the web root.
+  Search term:
+    ```
+    intitle:"Apache HTTP Server" intitle:"documentation"
+    ```
+
+  - The operator *intitle* will search only the title tag of all the pages crawled by Google. We can be more specific and restrict our search to include only our scope of audit:
+  Search term:
+    ```
+    intitle:"Apache HTTP Server" intitle:"documentation" site:target.com
+    ```
+
+  - Looking for open directory listings containing `.bak` files is another easy task with Google:
+  Search term:
+    ```
+    "Index of" bak
+    ```
+  Search term:
+    ```
+    "Directory listing for" bak
+    ```
+
+  - Looking for files with a specific extension is as easy as:
+    ```
+    filetype:bak
+    ```
+    or
+    ```
+    filetype:"inc"
+    ```
+
+  - To restrict the search only to the website in our scope add `site:target.com`
+    ```
+    filetype:"inc" site:target.com
+    ```
+
+Through Google Hacking, we may be able to detect:
+- Error messages that may contain valuable information
+- Sensitive files and directories (passwords, usernames, configs, etc.)
+- Server or application vulnerabilities
+- Pages that contain login portals
+- and much more
+
+[Full list][http://www.googleguide.com/advanced_operators.html] of available Google Search Operators
+
+Google Hacking Database is available [here](https://www.exploit-db.com/google-hacking-database/)
 
 ___________________________________
 ## 2.8. Shodan HQ
+Similar to *Google Hacking*, there is another great search engine that will be very useful for our information gathering process.
+
+It is **Shodan HQ**. [Shodan](http://www.shodanhq.com/help/filters) is a computer search engine that uses a different approach from other search engines like Google, Yahoo, Bing, etc.
+Instead of crawling data in web pages, Shodan scans the entire Internet and interrogates the ports in order to gather information from the banners.
+
+Shodan searches includes the following protocols:
+- HTTP(S)
+- SSH
+- SNMP
+- MySQL / MondoDB
+- RDP
+- FTP
+- Telnet
+- and few more
+
+We can use it to search for:
+- devices with default username and password
+- viewing the configuration of a device
+- detect server versions, and much more
+
+Like other search engines, it has Boolean operators and [filters](https:/www.shodan.io) that can be used to narrow down the results:
+- **[before/after]** day/month/year : search only for data that was collected before or after the given date
+- **hostname** : filters results for hosts that contain the value in their hostname
+- **port** : narrow the search for specific services
+- **OS** : search for specific OS
+
+These are just a few of the available filters.
+
+It is important to know that in order to uses most of its features (such as exporting results) and filters, you need to create an account.
+
+Let's look at some search examples. Suppose we want to find all the devices running *apache* and that are in Italy (IT).
+
+Our search query will be something like this: (see img-274)
+  ```
+  apache country:IT
+  ```
+
+  As we can see, we have a good list of matching devices. (see img-275)
+
+If you need more detailed information about the host, you can click on *Details* and then the following page will appear. (see img-276)
+
+Of course you can refine your searches by filtering results for specific hostname, ports, and so on.
+
+We suggest you try it yourself in order to understand the true power of this tool.
