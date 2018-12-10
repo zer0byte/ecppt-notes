@@ -283,6 +283,7 @@ We have to check all these channels where data is retrieved from the client.
 
 The following examples, for the sake of simplicity, will examine scenarios where inputs are taken straight from the URL (with the GET method). The same techniques apply to other channels.
 
+#### 4.2.1. Simple SQL Scenario
 For the purpose of explaining the process of finding SQL Injections, we created a small (vulnerable) e-commerce web application showing cell phones for sale.
   Example:
     `ecommerce.php` takes an input parameter named `id` that read the product features from the database and prints them out on the page.
@@ -290,15 +291,305 @@ For the purpose of explaining the process of finding SQL Injections, we created 
     The `id` parameter is expected to be an integer.
     Sending the `id=1` GET parameter makes the application behave correctly. (see img-50)
 
+    When sending a comma (`id=,`) however, makes the application throws an error.(see img-51)
 
+Testing input for SSQL injection means trying to inject:
+- String terminators: `'` and `"`
+- SQL commands: **SELECT**, **UNION**, and others
+- SQL comments: `#` or `--`
 
+And checking if the web application starts to behave oddly.
 
+Always test **one injection at the time!** Otherwise you will not be able to understand what injection vector is successful.    
 
+#### 4.2.2. SQL Errors in Web Applications
+The web application we have just seen, prints internal errors on its input pages.
+This behavior helps developers **and penetration testers** to understand what is going on under the hood of a web application.
+
+Every DBMS responds to incorrect SQL queries with different **error messages**.
+
+Even within the same DBMS, error messages change according to the specific function the web application uses to interact with it.
+
+Example:
+  In the previous example we saw the `mysql_fetch_assoc()` function triggering an error due to our invalid input.
+
+  A typical error from **MS-SQL** looks like this:
+    ```
+    Incorrect syntax near [query snippet]
+    ```
+  While a typical **MySQL** looks more like this:
+    ```
+    You have an error in your SQL syntax. Check the manual that corresponds to your MySQL server version for the right syntax to use near [query snippet]
+    ```
+
+If during an engagement, you find error similar to the previous one, it is very likely that the application is vulnerable to an SQL injection attack.
+
+This is not always the case, sometimes you have to have **educated guesses** in order to understand if a  web app is vulnerable or not.
+
+#### 4.2.3. Boolean Based Detection
+Currently, most production web sites do not display such errors.
+This happens both because of the usability of the application, it is useless to display errors to end users who cannot understand or fix them, and to achieve **security through obscurity**.
+
+**Security through obscurity** is the use of secrecy of design, implementation or configuration in order to provide security.
+In the following slides you will see how this approach cannot defend a vulnerable application from **SQL injection attacks**.
+
+If a web application does not display errors in its output, it is still possible to test for SQL injection by using a **Boolean based detection technique**.
+
+The idea behind this process is simple, yet clever: trying to craft payloads which transform the web application queries into True/False conditions. The penetration tester then can infer the results of the queries by looking at how the application behavior changes with different True/False conditions.
+  Example:
+    To demonstrate how to detect a Boolean based SQLi, we created a website hosting an image gallery. Every images has an ID that identifies it (`id=1444`). (see img-60)
+
+    As usual, we try to detect the injection point by sending the web application SQL-reserved characters. In this example, a string termination character (`id=1444'`). The result is: The web application does not display an image. (see img-62)
+
+    Unfortunately, the application behaves in the same way when we ask for an image that simply does not exist. For example, if we pass `id=999999` as GET parameter.
+
+    We suspect that the query behind the page is something like
+      ```
+      SELECT <some fields> FROM <some table> WHERE id='GETID';
+      ```
+
+    So we can try to inject `999999'` or `'1'='1` to transform the query into:
+      ```
+      SELECT <some fields> FROM <some table> WHERE id='999999 or '1'='1';
+      ```
+
+    Which basically is an **always true condition**.
+
+  Testing this payload on the web application gives us back an output! To be sure, we also need to test an always false condition
+
+    We then change our payload to `999999'` or `'1'='1` which is an **always false condition**:
+      ```
+      SELECT <some fields> FROM <some table> WHERE id='999999 or '1'='2';
+      ```
+
+  It is also possible to test a little more with other always true or always false conditions such as:
+  - `1141' and 'els'='els`
+  - `1141' and 'els'='elsec`
+  - `1141' and 'hello'='hello`
+  - `1141' and 'hello'='bye`
+  - `els' and '1'='1`
+  - `els' and '1'='2`
+
+After detecting a potential injection point, it is time to test if it is actually possible.
+In the following chapters, you will see different techniques to exploit SQL injection vulnerabilities.
 
 ____________________________________________________
 ## 4.3. Exploiting In-Band SQL Injection
+**In-band SQL injection** techniques make the retrieval of data from the database very powerful thanks to the use of the **UNION** SQL command. For this reason, in-band injections are also known as *UNION-based SQL injection*.
+
+This kind of attack lets penetration tester extract the database content, in the form of the database name, tables schemas, and actual data.
+
+As we have seen in the first chapter of this module, the *UNION* statement combines the result-set of two or mote *SELECT* statements.
+  Example:
+    ```
+    SELECT <field list> FROM <table> UNION SELECT <field list> FROM <another table>;
+    ```
+#### 4.3.1. First Scenario
+We will see how to exploit an in-band SQL injection by studying some scenarios.
+  In the first scenario the database contains 2 tables: `CreditCards` and `Users`.
+    **CreditCards**
+    |id(int)|username(string)|password(string)|real_name(string)|
+    |-------|----------------|----------------|-----------------|
+    | 1     | admin          |strongpass123   |Armando Romeo    |
+    | 2     | fred           |wowstrongpass123|Fred Flintstone  |
+
+    **Users**
+    |user_id(int)|Cc_num(int)        |CVS(int)|
+    |------------|-------------------|--------|
+    | 1          |0000 1111 2222 3333| 123    |
+    | 2          |0123 4567 8901 2345| 321    |
+
+  The *user_id* column is the foreign key of the *Users* table.
+  In this example *admin* has a credit card number of *0000 1111 2222 3333* while *fred* has a credit card number of *0123 4567 8901 2345*.
+    **CreditCards**
+    |id(int)|username(string)|password(string)|real_name(string)|
+    |-------|----------------|----------------|-----------------|
+    | 1     | admin          |strongpass123   |Armando Romeo    |
+    | 2     | fred           |wowstrongpass123|Fred Flintstone  |
+
+    **Users**
+    |user_id(int)|Cc_num(int)        |CVS(int)|
+    |------------|-------------------|--------|
+    | 1          |0000 1111 2222 3333| 123    |
+    | 2          |0123 4567 8901 2345| 321    |
+
+  The web application uses the following code to display usernames:
+    ```
+    <?php
+    $rs=mysql_query("SELECT real_name FROM users WHERE id=".$_GET['id'].";");
+    $row=mysql_fetch_assoc($rc);
 
 
+    echo $row['real_name'];
+    ?>
+    ```
+    As you can see, there is a clear SQL injection point in the id field of the SQL query.
+
+  We can now exploit the SQLi vulnerability to retrieve the credit card associated with a username. Our payload is:
+    ```
+    9999 UNION ALL SELECT cc_num FROM CreditCards WHERE user_id=1
+    ```
+
+  The payload makes the query in the web application transform into the following:
+    ```
+    SELECT real_name FROM users WHERE id=9999 UNION ALL SELECT cc_num FROM CreditCards WHERE user_id=1;
+    ```
+
+    As there are no *users* with *id=9999* the web application will display on its output the *cc_num* of the first user.
+
+  We can now submit the payload to the web application by sending a *GET request* with either the browser or, via different tool:
+    ```
+    /vuln_to_inband.php?id=9999 UNION ALL SELECT cc_num FROM CreditCards WHER user_id=1
+    ```
+    Note the use of `ALL` operator. We used it to avoid the effect of an eventual *DISTINCT* clause in the original web application query.
+
+  Another good trick to use when exploiting a SQL injection vulnerability is to use **comments**. A payload such as:
+    ```
+    9999 UNION ALL SELECT cc_num FROM CreditCards WHERE user_id=1; -- -
+    ```
+    This comments out any other SQL code which could follow our injection point.
+
+#### 4.3.2. In-band Attack Challenges
+There are many things to note in the previous attack:
+- The field types of the second SELECT statement  should match the ones in the first statement
+- The number of fields in the second SELECT statement should match the number of fields in the first statement
+- To successfully perform the attack, we need to know the structure of the database in terms of tables and column names
+
+To solve the first two issues, we can use an advanced technique to find what columns are used in a *SELECT* statement. We are looking for the number of columns and their type.
+
+We will see how to reverse-engineer the database structure later. In the following examples we assume that we know the structure of the database.
+
+##### 4.3.3. Enumerating the Number of Fields in a Query
+Let us see how to **enumerate** the number of columns, or field, in query selects.
+  The following line contains the vulnerable query:
+    ```
+    mysql_query("SELECT real_name FROM users WHERE id=".$_GET['id'].";");
+    ```
+    The columns have the following data types:
+    - `id` has data type `int`
+    - `real_name` has data type `varchar` (a string)
+
+  In this case, the query selects two columns with type `integer` and `varchar`.
+  As most engagements are black-box penetration tests, we need a way to find:
+  - Number of columns a vulnerable query selects
+  - The data type of each column
+
+  Finding the number of fields in a query is a cyclical task.
+
+  If we do not provide the correct number of fields in the injected query, it will not work. This will throw an error on the web application output or simply mess up the contents of the output page rendering.
+
+  If the web application outputs an error, please note that every DBMS outputs a different error string:
+    **MySQL** error:
+      ```
+      The used SELECT statements have a different number of columns
+      ```
+    **MS SQL** error:
+      ```
+      All queries in an SQL statement containing a UNION operator must have an equal number of expressions in their target lists.
+      ```
+    **PostgreSQL** error:
+      ```
+      ERROR: each UNION query must have the same number of columns
+      ```
+    **Oracle** error:
+      ```
+      ORA-01789: query block has incorrect number of result columns
+      ```
+
+  We start by injecting a query that selects *null* fields.
+  We start with a single field and then increase the number of fields until we build a valid query.
+    Example:
+      Detecting the number of fields needed to exploit an in-band SQL injection looks like the following:
+      1. `999 UNION SELECT NULL; -- -`
+      2. `999 UNION SELECT NULL, NULL; -- -`
+        ...
+      4. `999 UNION SELECT NULL, NULL, NULL, NULL; -- -`
+
+      We can iteratively add null fields until the error disappears.
+      This will force the web application to execute the following queries:
+      - `SELECT id, real_name FROM users WHERE id='999' UNION SELECT NULL; -- -`
+        Which triggers an error (the left hand query selects two field while the right hand query selects just one field)
+      - `SELECT id, real_name FROM users WHERE id='999' UNION SELECT NULL, NULL; -- -`
+        Which triggers an error (the left hand query selects two field while the right hand query selects just one field)
+
+#### 4.3.4. Blind Enumeration
+However, what about a web application that does not display errors?
+  The basic idea is similar (increasing the number of fields at every step) but, in this case, we want to start with a **valid id** and then inject our query.
+
+  As we did before, we increase the number of fields selected until we create a valid query.
+    Example:
+      The `view.php` page displays a picture with `id` 1338 (see img-90)
+
+      We try to inject a query with a single field.
+        The payload is: `1138' UNION SELECT null; -- -`
+        The page is not rendered correctly, there must be an error in the query.
+
+      We increase the number of fields.
+        The payload is: `1138' UNION SELECT null,null; -- -`
+        The page now works, this means that the query is correct.
+
+      With our last payload we forced the web application to run the following query:
+        ```
+        SELECT field1, field2 FROM table WHERE id='1138' UNION SELECT null, null; -- - <remainder of the original query>
+        ```
+
+#### 4.3.5. Identifying Field Types
+After identifying the number of fields, we need to find their **type**.
+Most of the DBMSs perform type enforcing on the queries.
+  Example:
+    If the DBMS performs type enforcing on *UNION* statements you cannot perform a *UNION* between an integer and a string. Therefore,
+      ```
+      SELECT 1 UNION 'a';
+      ```
+    will trigger an error!
+
+Depending on how the DBMS handles data types, we are required to provide an exact match of the data types for each column in the two **SELECT** statement.
+  |DBMS         |Type Enforcing|
+  |-------------|--------------|
+  |MySQL        | No           |
+  |MS SQL Server| Yes          |
+  |Oracle       | Yes          |
+  |PostgreSQL   | Yes          |
+
+Finding the data types used in the queries is, once again, a cyclical process. We have to:
+- Substitute one of the `null` fields in our payload with a constant
+- If the constant type used is correct, the query will work
+- If the type is wrong the web application will output an error or misbehave
+
+In the next example, we will try to find the data types used in a query.
+
+We found an in-band SQL injection with two fields.
+  Our current payload is:
+    ```
+    ' UNION SELECT null, null, -- -
+    ```
+  So we try to test if the first field is an integer by sending:
+    ```
+    ' UNION SELECT 1, null; -- -
+    ```
+
+  If the web application works correctly we can assume that the first field is an integer so we proceed from:
+    ```
+    ' UNION SELECT 1, null; -- -
+    ```
+  To:
+    ```
+    ' UNION SELECT 1, 1; -- -
+    ```
+
+  If we get an error, or the application misbehaves, then the second field is not an integer therefore, we can move on to:
+    ```
+    ' UNION SELECT 1, 'a'; -- -
+    ```
+
+    As we see from this example, the second field is a string!
+
+#### 4.3.6. Dumping the Database Content
+After finding out the number of columns and their types, it is possible to extract information about the database, the server, and the database data.
+
+We will see how to use specific DBMS features to extract this information later. Let us first cover other exploitation techniques.
+
+(see vid-101)
 
 ____________________________________________________
 ## 4.4. Exploiting Error-Based SQL Injection
