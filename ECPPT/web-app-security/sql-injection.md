@@ -1102,7 +1102,200 @@ In the following video you will see how to manually exploit a blind SQL injectio
 
 ____________________________________________________
 ## 4.6. SQLMap
+After seeing how manual exploitation of a SQL injection works, it is time to see one of the best and most used tools in the field: **SQLMap**
 
+We will first take a look at its basic features, then we will move on to advantaged setting.
+
+As the official documentation says: "SQLMap is an open source penetration testing tool that automates the process of detecting and exploiting SQL injection flaws and taking over of database servers"
+
+With *SQLMap* you can both *detect* and *exploit* SQL injections.
+We strongly recommend testing your injections by hand first and then move to the tool because if you go full automatic, the tool could choose an inefficient exploitation strategy or even crash the remote service!
+
+The basic syntax is pretty simple:
+  ```
+  $ sqlmap -u <URL> -p <injection parameter> [options]
+  ```
+  *SQLMap* needs to know the vulnerable URL and the parameter to test for a SQLi. It could even go fully automatic, without providing any specific parameter to test.
+
+#### 4.6.1. Basic Syntax
+Example:
+To exploit the **union-based in-based SQLi**  of one of our previous examples, the syntax would have been:
+  ```
+  $ sqlmap -u "http://victim.site/view.php?id=1141" -p id --technique=U
+  ```
+  This tells SQLMap to test the `id` parameter of GET request for `view.php`. Moreover it tells SQLMap to use a UNION based SQL injection technique.
+
+If you have to exploit a POST parameter you have to use:
+  ```
+  $ sql -u <URL> --data=<POST string> -p parameter [options]
+  ```
+  You can write the POST string by yourself or copy it from a request intercepted with Burp Proxy.
+
+Another way to use SQLMap is by saving a request intercepted with Burp Proxy to a file. (see img-196)
+And then specifying it on the command line:
+  ```
+  $ sqlmap -r <request file> -p parameter [options]
+  ```
+  You can also copy the POST string from a request intercepted with Burp Proxy.
+
+#### 4.6.2. Extracting the Database Banner
+The very first step of most SQLi exploitations is grabbing the database banner. By using the `--banner` switch you can grab the database banner. This is extremely helpful both to test your injection and to have proof of the exploitability of the vulnerability to include in your report.
+  ```
+  $ sqlmap -u <target> --banner <other options>
+  ```
+
+#### 4.6.3. Information Gathering
+Then you can move to a sort of **information gathering phase**.
+  The first thing is to list the users of the database:
+    ```
+    $ sqlmap -u <target> --users <other options>
+    ```
+  Then check if the web application database user is a database administrator:
+    ```
+    $ sqlmap -u <target> --is-dba <other options>
+    ```
+
+#### 4.6.4. Extracting the Databases
+The `--dbs` command lets you list all of the available databases:
+  ```
+  $ sqlmap -u <target> --dbs <other options>
+  ```
+
+#### 4.6.5. Extracting the Schema
+After that you can choose a database by using the `-D` switch and lists its tables:
+  ```
+  $ sqlmap -u <target> -D <database> --tables <other options>
+  ```
+
+In the same manner you can choose one or more tables and list their columns:
+  ```
+  $ sqlmap -u <target> -D <database> -T <tables, comma separated list> --columns <other options>
+  ```
+
+Finally you can dump just the columns you need:
+  ```
+  $ sqlmap -u <target> -D <database> -T <tables> -C <columns list> --dump <other options>
+  ```
+
+
+#### 4.6.6. SQL Injection
+In the following video, you will see how to identify SQL injection vectors.
+You will see how to use Boolean logic injections to test vulnerable parameters and use SQLMap to perform basic SQLi exploitation.
+
+(see vid-206)
+
+
+#### 4.6.7. SQLMap
+In the following video you will see how to configure and use *SQLMap* to automate your SQL injections! The video covers:
+- Best practices and best workflow to perform SQLi exploitation with SQLMap
+- Exploitation GET injections
+- Exploitation POST injections
+- Checking payloads used
+- Configuring the right technique to use
+- Using Burp Proxy and SQLMap
+
+(see vid-207)
+
+#### 4.6.8. SQLMap Advanced Usage
+Not all web application and exploitation scenarios are the same. Because of that, *SQLMap* provides you with some useful command line switches that help fine tune the following:
+- The DBMS you are attacking
+- Injection point
+- Payload aggressiveness
+- Exploitation speed and load on the client's infrastructure
+
+###### 4.6.8.1. Forcing the DBMS
+Different DBMSs offer different features. This also implies that you have to exploit different commands and default configuration to perform a SQLi exploitation.
+
+*SQLMap* is able to detect the DBMS behind a web application automatically. If it fails, you can specify the DBMS by hand:
+  ```
+  $ sqlmap --dbms=<DBMS> ...
+  ```
+
+The DBMSs you can specify are:
+- MySQL
+- Oracle
+- PostgreSQL
+- Microsoft SQL Server
+- Microsoft Access
+- SQLite
+- Firebird
+- Sybase
+- SAP MaxDB
+- DB2
+
+Specifying the DBMS also helps to shorten the detection phase and its detectability.
+Beware that specifying the wrong DBMS means sending useless payloads to thet target application.
+
+###### 4.6.8.2. Fine-Tuning the Payloads
+Web applications sometime change their output in a way that *SQLMap* cannot figure it out. This makes a blind exploitation impossible. To get around this, you can use the `--string` and `--not-string` command line switches:
+- Append to `--string` a string which is always be present in **true** output pages
+- Append to `--not-string` a string which is always be present in **false** output pages
+
+Example:
+  Using the `--string` command line switch in the previous cell phones selling site looks like this:
+    ```
+    $ sqlmap -u 'http://localhost/ecommerce.php?id=1' --string "nokia" <other switches>
+    ```
+
+Sometimes a SQLi payload is inserted in a structured POST parameter like a JSON or you need to insert some characters to make the query syntactically correct.
+
+You can do that by using the `--prefix` and `--suffix` command line switches.
+
+If injection payloads need to end with `'));` it looks like this:
+  ```
+  $ sqlmap -u 'http://localhost/ecommerce.php?id=1' --suffix "'));'" <other switches>
+  ```
+
+###### 4.6.8.3. Aggresiveness and Load
+For sake of simplicity in our examples we always exploited GET parameters, but SQLi can be performed on any client-side input field.
+
+By using the `--level` command line switch, *SQLMap* is able to test:
+- The Cookie header - values 2
+- The User-Agent and Referrer - headers 3
+- The Host - header 5
+
+By default (default 1) *SQLMap* tests GET and POST parameters, increasing to Level 2 makes it test Cookie headers and increasing it more makes it test other headers and increase the number of columns tested for in-band exploitation.
+
+Please note that the use of **the -p switch bypasses the Level**
+  This means that by **manually setting the parameter to test**, you can **perform more accurate, stealthy, and in-depth exploitation**
+
+As we have seen in this module, SQL injections are very powerful. This means that they also have a lot of potential to destroy or create a denial of service attack on your client's infrastructure.
+  Example:
+    Permanently injecting some heavy time-based SQLis on a popular page on a web site can:
+    - Make the page load extremely slow
+    - Eat-up all the CPU resources available for that site
+
+The `--risk` parameter lets you fine-tune how **dangerous** your injections can be. Use this parameter only when needed **after carefully studying the web application you are testing!**
+
+Generally speaking, launching SQLMap with both a high level and risk and letting it automatically test for injection points is **very unprofessional and will probably generate issues to your client's infrastructure!**
+
+There are three Risk levels. Increasing Risk means first enabling heavy time-based injections and then enable OR-based injections.
+  |Risk|SQLMap Behavior                      |
+  |----|-------------------------------------|
+  | 1  |(Default) innocuous injections       |
+  | 2  |Enables heavy time-based injections  |
+  | 3  |Enables OR-based injections          |
+
+  OR-based injections are enabled only on the highest Risk value because using them on UPDATE queries would update all the rows in a table.
+
+SQLi injections can take a long time to dump the data needed in a pentest. This time can be reduced by using persistent connection to the target by using the `--keep-alive` command line switch.
+  ```
+  sqlmap -u <target> --keep-alive <other commands>
+  ```
+
+Once you found out how to exploit a SQLi, you can reduce the dumping phase time by using parallel threads. Use the `--threads` command line switch with an argument ranging from 1 to 10.
+  Example:
+  Using 7 threads to exploit a blind injection
+    ```
+    sqlmap -u <target> --technique=8 --threads 7 <other commands>
+    ```
+
+**Conclusions**
+  SQL Injections are one of the most common attacks black hat hackers use: they can rapidly take control over data and get unauthorized access to the entire sever!
+
+  As a penetration tester you have to find a way to exploit SQL injections without destroying your client's web application or causing a denial of service.
+
+  As always in ethical hacking, knowledge is the key for success!
 
 
 ____________________________________________________
